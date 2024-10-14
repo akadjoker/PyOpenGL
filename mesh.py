@@ -22,11 +22,9 @@ class Material:
         self.shader = Shader()
         self.name = name
         self.attributes=[]
+        self.textures = []
   
     
-    def use(self):
-        self.shader.use()
-        self.apply()
 
     def apply(self):
         pass
@@ -60,14 +58,15 @@ class ColorMaterial(Material):
 class TextureColorMaterial(Material):
     def __init__(self,texture):
         super().__init__("TextureColor")
-        self.attributes=[Attribute.POSITION3D,Attribute.TEXCOORD0,Attribute.COLOR3] 
-        self.texture = texture
+        self.attributes=[Attribute.POSITION3D,Attribute.TEXCOORD0,Attribute.COLOR4] 
+        self.textures.append(texture) 
+
         vertex="""#version 330
 
         layout(location = 0) in vec3 aPos;
         layout(location = 1) in vec2 aTexCoord;
-        layout(location = 2) in vec3 aColor;
-        out vec3 vColor;
+        layout(location = 2) in vec4 aColor;
+        out vec4 vColor;
         out vec2 vTexCoord;
         void main()
         {
@@ -79,19 +78,18 @@ class TextureColorMaterial(Material):
 
         fragment="""#version 330
         out vec4 fragColor;
-        in vec3 vColor;
+        in vec4 vColor;
         in vec2 vTexCoord;
         uniform sampler2D texture0;
         void main()
         {
-            fragColor =   texture(texture0, vTexCoord) ;
+            fragColor =   texture(texture0, vTexCoord) * vColor;
         }
         """
         self.shader.createShader(vertex,fragment)
         self.shader.set_int("texture0",0)
 
-    def apply(self):
-        self.texture.bind(0)
+
 
 
 class Mesh:
@@ -120,7 +118,8 @@ class Mesh:
         self.flags |= 1
         self.flags |= 128
 
-        self.count = 0
+        self.tris = 0
+        self.vrtx = 0
 
 
 
@@ -185,10 +184,12 @@ class Mesh:
             if attribute == Attribute.POSITION3D and self.flags & 1:
                 glBindBuffer(GL_ARRAY_BUFFER, self.vbo[index])
                 glBufferData(GL_ARRAY_BUFFER, np.array(self.vertices, dtype=np.float32), GL_STATIC_DRAW)
+                self.vrtx = len(self.vertices) // 3
                 self.flags &= ~1
             elif attribute == Attribute.POSITION2D and self.flags & 1:
                 glBindBuffer(GL_ARRAY_BUFFER, self.vbo[index])
                 glBufferData(GL_ARRAY_BUFFER, np.array(self.vertices, dtype=np.float32), GL_STATIC_DRAW)
+                self.vrtx = len(self.vertices) // 2
                 self.flags &= ~1
             elif attribute == Attribute.NORMAL and self.flags & 2:
                 glBindBuffer(GL_ARRAY_BUFFER, self.vbo[index])
@@ -220,16 +221,12 @@ class Mesh:
         if self.flags & 128: 
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.ebo)
             glBufferData(GL_ELEMENT_ARRAY_BUFFER, np.array(self.indices, dtype=np.uint32), GL_STATIC_DRAW)
-            self.count = len(self.indices)
+            self.tris = len(self.indices)
             self.flags &= ~128
 
         self.flags = 0
         glBindVertexArray(0)  
 
 
-    def render(self):
-        if self.count == 0:
-            return
-        self.material.apply() 
-        glBindVertexArray(self.vao)
-        glDrawElements(GL_TRIANGLES, self.count, GL_UNSIGNED_INT, None)
+
+        
