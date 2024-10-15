@@ -1,93 +1,9 @@
 from enum import Enum
-import glfw
-from OpenGL.GL import *
 import numpy as np
-from core  import *
-
-
-class Attribute(Enum):
-    POSITION3D = 0
-    POSITION2D = 1
-    TEXCOORD0 = 2
-    TEXCOORD1 = 3
-    COLOR3 = 10
-    COLOR4 = 11
-    NORMAL = 12
-    TANGENT = 13
-    BITANGENT = 14
-
-
-class Material:
-    def __init__(self,name):
-        self.shader = Shader()
-        self.name = name
-        self.attributes=[]
-        self.textures = []
-  
-    
-
-    def apply(self):
-        pass
-
-class ColorMaterial(Material):
-    def __init__(self):
-        super().__init__("Color")
-        self.attributes=[Attribute.POSITION3D,Attribute.COLOR3] 
-        vertex="""#version 330
-
-        layout(location = 0) in vec3 aPos;
-        layout(location = 1) in vec3 aColor;
-        out vec3 vColor;
-        void main()
-        {
-            vColor = aColor;
-            gl_Position = vec4(aPos, 1.0);
-        }
-        """
-
-        fragment="""#version 330
-        in vec3 vColor;
-        out vec4 fragColor;
-        void main()
-        {
-            fragColor = vec4(vColor, 1.0);
-        }
-        """
-        self.shader.createShader(vertex,fragment)
-
-class TextureColorMaterial(Material):
-    def __init__(self,texture):
-        super().__init__("TextureColor")
-        self.attributes=[Attribute.POSITION3D,Attribute.TEXCOORD0,Attribute.COLOR4] 
-        self.textures.append(texture) 
-
-        vertex="""#version 330
-
-        layout(location = 0) in vec3 aPos;
-        layout(location = 1) in vec2 aTexCoord;
-        layout(location = 2) in vec4 aColor;
-        out vec4 vColor;
-        out vec2 vTexCoord;
-        void main()
-        {
-            vColor = aColor;
-            vTexCoord = aTexCoord;
-            gl_Position = vec4(aPos, 1.0);
-        }
-        """
-
-        fragment="""#version 330
-        out vec4 fragColor;
-        in vec4 vColor;
-        in vec2 vTexCoord;
-        uniform sampler2D texture0;
-        void main()
-        {
-            fragColor =   texture(texture0, vTexCoord) * vColor;
-        }
-        """
-        self.shader.createShader(vertex,fragment)
-        self.shader.set_int("texture0",0)
+from OpenGL.GL import *
+from .core  import *
+from .material import *
+from .utils import Rectangle,BoundingBox
 
 
 
@@ -97,7 +13,7 @@ class Mesh:
 
         self.material = material
         self.attributes=material.attributes
-
+        self.mode =GL_TRIANGLES
         self.vbo = {}
         self.vertices = []
         self.normals = []
@@ -111,6 +27,7 @@ class Mesh:
         self.dynamic = False
         self.isConfigured = False
         self.data = 0
+        self.box = BoundingBox()
 
         self.vao = glGenVertexArrays(1)
         self.ebo = glGenBuffers(1)
@@ -122,7 +39,15 @@ class Mesh:
         self.vrtx = 0
 
 
-
+    def get_total_vertices(self):
+        return len(self.vertices) // 3
+    
+    def get_total_triangles(self):
+        return len(self.indices) // 3
+    
+    def get_total_indices(self):
+        return len(self.indices) 
+    
     def configure(self):
         if self.isConfigured:
             return
@@ -228,5 +153,135 @@ class Mesh:
         glBindVertexArray(0)  
 
 
-
+    def add_vertex(self,x,y,z):
+        self.vertices.append(x)
+        self.vertices.append(y)
+        self.vertices.append(z)
+        self.flags |= 1
+        return len(self.vertices)//3
+    
+    def add_vertex_textured(self,x,y,z,u,v):
+        self.vertices.append(x)
+        self.vertices.append(y)
+        self.vertices.append(z)
+        self.texcoord0.append(u)
+        self.texcoord0.append(v)
+        self.flags |= 1
+        self.flags |= 8
+    def add_normal(self,x,y,z):
+        self.normals.append(x)
+        self.normals.append(y)
+        self.normals.append(z)
+        self.flags |= 2
         
+    def set_normal(self,index,x,y,z):
+        offset = index*3
+        self.normals[offset] = x
+        self.normals[offset+1] = y
+        self.normals[offset+2] = z
+        self.flags |= 2
+
+    def add_triangle(self,a,b,c):
+        self.indices.append(a)
+        self.indices.append(b)
+        self.indices.append(c)
+        self.flags |= 128
+
+    def get_normal(self,index):
+        offset = index*3
+        return glm.vec3(self.normals[offset],self.normals[offset+1],self.normals[offset+2])
+        
+    
+    def set_position(self,index,x,y,z):
+        offset = index*3
+        self.vertices[offset] = x
+        self.vertices[offset+1] = y
+        self.vertices[offset+2] = z
+        self.flags |= 1
+    
+    def get_position(self,index):
+        offset = index*3
+        return glm.vec3(self.vertices[offset],self.vertices[offset+1],self.vertices[offset+2])
+
+    
+    def calcula_normals(self):
+        
+        if len(self.normals)==0:
+            count = len(self.vertices)//3
+            for i in range(count):
+                self.normals.append(0)
+                self.normals.append(0)
+                self.normals.append(0)
+        faces = len(self.indices)//3
+       
+        for i in range(faces):
+            a = self.indices[i*3]
+            b = self.indices[i*3 + 1]
+            c = self.indices[i*3 + 2]
+            v1 = self.get_position(a)
+            v2 = self.get_position(b)
+            v3 = self.get_position(c)
+            
+            sub1 = v2 - v1
+            sub2 = v3 - v1
+            cross = glm.cross(sub1, sub2)
+            normal = glm.normalize(cross)
+            self.set_normal(a, normal.x, normal.y, normal.z)
+            self.set_normal(b, normal.x, normal.y, normal.z)
+            self.set_normal(c, normal.x, normal.y, normal.z)
+        self.flags |= 2
+        
+
+    def calcula_smoth_normals(self):
+       
+        normals =[]
+        self.normals.clear()
+  
+        count = len(self.vertices)//3
+        for i in range(count):
+            self.normals.append(0)
+            self.normals.append(0)
+            self.normals.append(0)
+            normals.append(glm.vec3(0,0,0))
+
+        faces = len(self.indices)//3
+        for i in range(faces):
+            a = self.indices[i*3]
+            b = self.indices[i*3 + 1]
+            c = self.indices[i*3 + 2]
+            v1 = self.get_position(a)
+            v2 = self.get_position(b)
+            v3 = self.get_position(c)
+            sub1 = v2 - v1
+            sub2 = v3 - v1
+            cross = glm.cross(sub1, sub2)
+            normal = glm.normalize(cross)
+            normals[a] += normal
+            normals[b] += normal
+            normals[c] += normal
+        for i in range(count):
+            normal = glm.normalize(normals[i])
+            self.set_normal(i, normal.x, normal.y, normal.z)
+        self.flags |= 2
+
+
+    def calculate_bounding_box(self):
+        min_point = glm.vec3(float('inf'), float('inf'), float('inf'))
+        max_point = glm.vec3(float('-inf'), float('-inf'), float('-inf'))
+
+        count = len(self.vertices) // 3
+
+        for i in range(count):
+            v = self.get_position(i)
+            
+            min_point.x = min(min_point.x, v.x)
+            min_point.y = min(min_point.y, v.y)
+            min_point.z = min(min_point.z, v.z)
+
+            max_point.x = max(max_point.x, v.x)
+            max_point.y = max(max_point.y, v.y)
+            max_point.z = max(max_point.z, v.z)
+
+        self.box.min = min_point
+        self.box.max = max_point
+        return self.box
