@@ -3,7 +3,7 @@ import numpy as np
 from OpenGL.GL import *
 from .core  import *
 from .material import *
-from .utils import Rectangle,BoundingBox
+from .utils import Rectangle,BoundingBox,Plane3D
 
 
 
@@ -37,6 +37,7 @@ class Mesh:
 
         self.tris = 0
         self.vrtx = 0
+        self.no_verts = 0
 
 
     def get_total_vertices(self):
@@ -157,8 +158,10 @@ class Mesh:
         self.vertices.append(x)
         self.vertices.append(y)
         self.vertices.append(z)
+
+        self.no_verts += 1
         self.flags |= 1
-        return len(self.vertices)//3
+        return self.no_verts - 1
     
     def add_vertex_textured(self,x,y,z,u,v):
         self.vertices.append(x)
@@ -166,8 +169,10 @@ class Mesh:
         self.vertices.append(z)
         self.texcoord0.append(u)
         self.texcoord0.append(v)
+        self.no_verts += 1
         self.flags |= 1
-        self.flags |= 8
+        return self.no_verts - 1
+    
     def add_normal(self,x,y,z):
         self.normals.append(x)
         self.normals.append(y)
@@ -180,6 +185,12 @@ class Mesh:
         self.normals[offset+1] = y
         self.normals[offset+2] = z
         self.flags |= 2
+
+    def set_tex_coords(self,index,u,v):
+        offset = index*2
+        self.texcoord0[offset] = u
+        self.texcoord0[offset+1] = v
+        self.flags |= 8
 
     def add_triangle(self,a,b,c):
         self.indices.append(a)
@@ -285,3 +296,147 @@ class Mesh:
         self.box.min = min_point
         self.box.max = max_point
         return self.box
+    def make_planar_mapping(self, resolution):
+        if len(self.vertices) == 0 or len(self.texcoord0) == 0 or len(self.indices) == 0:
+            print("Mesh has no vertices or indices")
+            return
+
+        for i in range(0, len(self.indices), 3):
+            a = self.indices[i]
+            b = self.indices[i + 1]
+            c = self.indices[i + 2]
+
+            v0 = self.get_position(a)
+            v1 = self.get_position(b)
+            v2 = self.get_position(c)
+
+            plane = Plane3D.from_points(v0, v1, v2)
+
+            # Convertendo as componentes da normal para valores absolutos
+            plane.normal.x = abs(plane.normal.x)
+            plane.normal.y = abs(plane.normal.y)
+            plane.normal.z = abs(plane.normal.z)
+
+            # Mapeamento planar baseado na maior componente da normal
+            if plane.normal.x > plane.normal.y and plane.normal.x > plane.normal.z:
+                self.set_tex_coords(a, v0.y * resolution, v0.z * resolution)
+                self.set_tex_coords(b, v1.y * resolution, v1.z * resolution)
+                self.set_tex_coords(c, v2.y * resolution, v2.z * resolution)
+            elif plane.normal.y > plane.normal.x and plane.normal.y > plane.normal.z:
+                self.set_tex_coords(a, v0.x * resolution, v0.z * resolution)
+                self.set_tex_coords(b, v1.x * resolution, v1.z * resolution)
+                self.set_tex_coords(c, v2.x * resolution, v2.z * resolution)
+            else:
+                self.set_tex_coords(a, v0.x * resolution, v0.y * resolution)
+                self.set_tex_coords(b, v1.x * resolution, v1.y * resolution)
+                self.set_tex_coords(c, v2.x * resolution, v2.y * resolution)
+
+
+    def make_cube_mapping(self, resolution=1.0):
+        for i in range(0, len(self.indices), 3):
+            a = self.indices[i]
+            b = self.indices[i+1]
+            c = self.indices[i+2]
+
+            v0 = self.get_position(a)
+            v1 = self.get_position(b)
+            v2 = self.get_position(c)
+
+            # Para cada vértice, define as coordenadas UV baseadas na posição
+            for v, idx in [(v0, a), (v1, b), (v2, c)]:
+                u, v = 0, 0
+                abs_x, abs_y, abs_z = abs(v.x), abs(v.y), abs(v.z)
+
+                if abs_x > abs_y and abs_x > abs_z:  # Eixo X é dominante
+                    u = v.z * resolution
+                    v = v.y * resolution
+                elif abs_y > abs_x and abs_y > abs_z:  # Eixo Y é dominante
+                    u = v.x * resolution
+                    v = v.z * resolution
+                else:  # Eixo Z é dominante
+                    u = v.x * resolution
+                    v = v.y * resolution
+
+                    self.set_texcoord(idx, u, v)
+    def remove_duplicate_vertices(self):
+        unique_vertices = {}
+        new_indices = []
+        new_vertices = []
+
+        for i in range(len(self.indices)):
+            v = self.get_position(self.indices[i])
+
+            # Converta o vértice para uma tupla para poder comparar diretamente
+            v_key = (v.x, v.y, v.z)
+
+            if v_key not in unique_vertices:
+                unique_vertices[v_key] = len(new_vertices)  # Novo índice
+                new_vertices.append(v)
+
+            # Substitui o índice antigo pelo novo
+            new_indices.append(unique_vertices[v_key])
+
+        self.vertices = new_vertices
+        self.indices = new_indices
+        self.flags |= 1  
+        self.flags |= 128
+
+    def remove_nearby_duplicate_vertices(self, tolerance=1e-5):
+        unique_vertices = {}
+        new_indices = []
+        new_vertices = []
+
+        def is_near(v1, v2, tolerance):
+            return glm.length(v1 - v2) < tolerance
+
+        for i in range(len(self.indices)):
+            v = self.get_position(self.indices[i])
+
+            # Verifica se o vértice está próximo de outros já existentes
+            found = False
+            for key, idx in unique_vertices.items():
+                if is_near(glm.vec3(*key), v, tolerance):
+                    new_indices.append(idx)
+                    found = True
+                    break
+
+            if not found:
+                # Se não encontrou nenhum vértice próximo, adiciona um novo
+                unique_vertices[(v.x, v.y, v.z)] = len(new_vertices)
+                new_vertices.append(v)
+                new_indices.append(len(new_vertices) - 1)
+
+  
+        self.vertices = new_vertices
+        self.indices = new_indices
+        self.flags |= 1  
+        self.flags |= 128  
+
+    def merge_vertices_in_flat_areas(self, angle_threshold=0.01):
+        normals = self.compute_normals()
+
+        new_indices = []
+        for i in range(0, len(self.indices), 3):
+            a = self.indices[i]
+            b = self.indices[i + 1]
+            c = self.indices[i + 2]
+
+            n0 = normals[a]
+            n1 = normals[b]
+            n2 = normals[c]
+
+            angle1 = glm.dot(n0, n1)
+            angle2 = glm.dot(n1, n2)
+            angle3 = glm.dot(n2, n0)
+
+            # Se os ângulos entre as normais forem menores que o threshold, podemos combinar os vértices
+            if angle1 > angle_threshold and angle2 > angle_threshold and angle3 > angle_threshold:
+                v_avg = (self.get_position(a) + self.get_position(b) + self.get_position(c)) / 3
+                self.set_position(a, v_avg.x, v_avg.y, v_avg.z)
+                new_indices.extend([a, a, a])  # Combina todos os índices em um único vértice
+            else:
+                new_indices.extend([a, b, c])
+
+        self.indices = new_indices
+        self.flags |= 1  
+        self.flags |= 128

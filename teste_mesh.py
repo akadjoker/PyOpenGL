@@ -20,7 +20,7 @@ plane = create_plane(5,5,5,5, material)
 sphere = create_sphere(20,20, material)
 cone = create_cone(20,20, material)
 torus = create_torus(20,20,0.5,0.8, material)
-
+cylinder = create_cylinder(20,20,0.2, 1, material)
 
 
 
@@ -42,6 +42,16 @@ render.set_projection_matrix(proj_mat)
 render.set_model_matrix(model_mat)
 
 rotate =0
+
+
+def mouse_callback(xpos, ypos):
+    print(xpos, ypos) 
+def key_callback(key, scancode, action, mods):
+    print(key, scancode, action, mods)
+
+core.OnKeyPress = key_callback
+core.OnMouseMove = mouse_callback
+
 
 while core.run():
     render.set_viewport(0, 0, core.width, core.height)
@@ -83,6 +93,14 @@ while core.run():
     model_mat = glm.rotate(model_mat, glm.radians(rotate), glm.vec3(0.0, 0.0, 1.0))
     render.set_model_matrix(model_mat)
     render.render_mesh(torus)
+
+    model_mat = glm.mat4(1.0)
+    model_mat = glm.translate(model_mat, glm.vec3(-1.2, 0.5, 2.0))
+    model_mat = glm.rotate(model_mat, glm.radians(rotate), glm.vec3(1.0, 0.0, 0.0))
+    model_mat = glm.rotate(model_mat, glm.radians(rotate), glm.vec3(0.0, 1.0, 0.0))
+    model_mat = glm.rotate(model_mat, glm.radians(rotate), glm.vec3(0.0, 0.0, 1.0))
+    render.set_model_matrix(model_mat)
+    render.render_mesh(cylinder)
 
     core.flip()
 

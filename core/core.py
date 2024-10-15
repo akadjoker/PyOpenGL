@@ -137,8 +137,8 @@ class Render:
             glDisable(GL_DEPTH_TEST)
 
     def set_material(self, material):
-        if self.material == material:
-            return
+        #if self.material == material:
+        #    return
         self.material = material
         self.set_program(material.shader.program)
 
@@ -265,11 +265,16 @@ class Core:
         self.render = Render()
         self.render.width = width
         self.render.height = height
-
+        self.last_frame = 0.0
+        self.delta_time = 0.0
         self.OnResize = None
         self.OnKeyPress = None
         self.OnMouseMove = None
         self.OnMouseClick = None
+        self.key_pressed =[False] * 256
+        self.mouse_pressed = [False] * 8
+        self.mouse_x = 0
+        self.mouse_y = 0
         
 
 
@@ -298,25 +303,30 @@ class Core:
     def _key_callback(self, window, key, scancode, action, mods):
         if key == glfw.KEY_ESCAPE and action == glfw.PRESS:
             glfw.set_window_should_close(window, 1)
-        if self.OnKeyPress is not None:
-            self.OnKeyPress(key, scancode, action, mods)
+        self.key_pressed[key] = action != glfw.RELEASE
 
     def _cursor_callback(self, window, xpos, ypos):
-        if self.OnMouseMove is not None:
-            self.OnMouseMove(xpos, ypos)
+        self.mouse_x = xpos
+        self.mouse_y = ypos
 
     def _mouse_callback(self, window, button, action, mods):
-        if self.OnMouseClick is not None:
-            self.OnMouseClick(button, action, mods)
+        self.mouse_pressed[button] = action != glfw.RELEASE
     
     def _resize_callback(self,window,w,h):
         self.width  = w
         self.height = h
         self.render.set_size(w, h)
-        if self.OnResize is not None:
-            self.OnResize(w, h)
+
         
 
+    def mouse_down(self, button):
+        return self.mouse_pressed[button]
+
+    def mouse_pos(self):
+        return glm.vec2(self.mouse_x, self.mouse_y)
+    
+    def key_down(self, key):
+        return self.key_pressed[key]
 
 
     def get_width(self):
@@ -327,10 +337,18 @@ class Core:
 
     def get_time(self):
         return glfw.get_time()
+    
+    def get_delta_time(self):
+        return self.delta_time
 
     def run(self):
         self.render.reset()
+        for key in range(256):
+            self.key_pressed[key] = False
         state = glfw.window_should_close(self.window)
+        current_frame = glfw.get_time()
+        self.delta_time = current_frame - self.last_frame
+        self.last_frame = current_frame
         glfw.poll_events()
         return not state
     

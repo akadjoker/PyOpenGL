@@ -20,6 +20,18 @@ class Rectangle:
     def intersects(self, other):
         return not (self.x > other.x + other.width or self.x + self.width < other.x or self.y > other.y + other.height or self.y + self.height < other.y)
 
+
+class Plane3D:
+    def __init__(self, normal):
+        self.normal = normal
+
+    @staticmethod
+    def from_points(v0, v1, v2):
+        edge1 = v1 - v0
+        edge2 = v2 - v0
+        normal = glm.normalize(glm.cross(edge1, edge2))
+        return Plane3D(normal)
+
 class BoundingBox:
     def __init__(self):
         self.min = glm.vec3(float('inf'), float('inf'), float('inf'))
