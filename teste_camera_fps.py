@@ -2,7 +2,7 @@ import core
 from core.core import *
 from core.mesh import *
 from core.builder import *
-from core.scene import Entity,Camera
+from core.scene import Entity,Camera,CameraFPS
 import sys
 import glm
 import math    
@@ -34,7 +34,7 @@ render.set_clear_mode(True)
 
 
 
-camera = Camera(45.0,core.width / core.height)
+camera = CameraFPS(45.0,core.width / core.height)
 camera.translate(0.0, 0.5, 15.0)
 camera.rotate(pitch, yaw, 0.0)
 
@@ -52,27 +52,31 @@ mouseSensitivity = 90
 while core.run():
     render.set_viewport(0, 0, core.width, core.height)
     render.clear()
-    speed = core.get_delta_time() * 25
+    speed = core.get_delta_time() * 1
 
     if input.mouse_down(0):
         yaw   += input.get_mouse_delta_x()  *  mouseSensitivity
         pitch -= input.get_mouse_delta_y()  *  mouseSensitivity
         pitch = max(-89.0, min(89.0, pitch))
         camera.rotate(pitch, yaw, 0.0)
-        #camera.set_local_rotation(glm.quat(glm.vec3(glm.radians(pitch), glm.radians(yaw), 0)))
+
+
 
 
 
 
     if input.keyboard_down(glfw.KEY_W):
-        camera.move(0, 0, -speed)
+        camera.move_forward(speed)
     if input.keyboard_down(glfw.KEY_S):
-        camera.move(0, 0, speed)
+        camera.move_backward(speed)
 
     if input.keyboard_down(glfw.KEY_A):
-        camera.move(speed,0,0)
+        camera.strafe_left(speed)
     if input.keyboard_down(glfw.KEY_D):
-        camera.move(-speed,0,0)
+        camera.strafe_right(speed)
+    
+
+    camera.update()
 
 
 

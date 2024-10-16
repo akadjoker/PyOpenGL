@@ -7,6 +7,7 @@ from .texture import Texture
 from .color import *
 from .material import *
 from .utils import Rectangle
+from .input import Input
 
 class BlendMode(Enum):
     NONE=0,
@@ -69,9 +70,9 @@ class Render:
         self.layers=[0,0,0,0,0,0]
         self.textureAssets={}
         self.shadersAssets={}
+
         
-        glEnable(GL_BLEND)
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+
 
 
     def reset(self):
@@ -262,19 +263,20 @@ class Core:
         self.width = width
         self.height = height
         self.title = title
-        self.render = Render()
-        self.render.width = width
-        self.render.height = height
-        self.last_frame = 0.0
         self.delta_time = 0.0
         self.OnResize = None
         self.OnKeyPress = None
         self.OnMouseMove = None
         self.OnMouseClick = None
-        self.key_pressed =[False] * 256
+        self.key_pressed =[False] * 512
         self.mouse_pressed = [False] * 8
         self.mouse_x = 0
         self.mouse_y = 0
+        self.render = Render()
+        self.render.width = width
+        self.render.height = height
+        self.last_frame = 0.0
+        self.input = Input()
         
 
 
@@ -291,26 +293,29 @@ class Core:
             glfw.terminate()
             raise Exception(" Fail to create GLFW window")
 
-        self.render.set_viewport(0, 0, width, height)
         glfw.make_context_current(self.window)
         glfw.set_window_size_callback(self.window, self._resize_callback)
         glfw.set_key_callback(self.window, self._key_callback)
         glfw.set_cursor_pos_callback(self.window, self._cursor_callback)
         glfw.set_mouse_button_callback(self.window, self._mouse_callback)
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        self.render.set_viewport(0, 0, width, height)
 
         
         
     def _key_callback(self, window, key, scancode, action, mods):
         if key == glfw.KEY_ESCAPE and action == glfw.PRESS:
             glfw.set_window_should_close(window, 1)
-        self.key_pressed[key] = action != glfw.RELEASE
+        down = action != glfw.RELEASE
+        self.input.set_key_state(key, down)
 
     def _cursor_callback(self, window, xpos, ypos):
-        self.mouse_x = xpos
-        self.mouse_y = ypos
+        self.input.set_mouse_cursor(xpos, ypos,self.width,self.height)
 
     def _mouse_callback(self, window, button, action, mods):
-        self.mouse_pressed[button] = action != glfw.RELEASE
+        donw = action != glfw.RELEASE
+        self.input.set_mouse_state(button, donw)
     
     def _resize_callback(self,window,w,h):
         self.width  = w
@@ -319,14 +324,7 @@ class Core:
 
         
 
-    def mouse_down(self, button):
-        return self.mouse_pressed[button]
 
-    def mouse_pos(self):
-        return glm.vec2(self.mouse_x, self.mouse_y)
-    
-    def key_down(self, key):
-        return self.key_pressed[key]
 
 
     def get_width(self):
@@ -343,8 +341,7 @@ class Core:
 
     def run(self):
         self.render.reset()
-        for key in range(256):
-            self.key_pressed[key] = False
+        self.input.update()
         state = glfw.window_should_close(self.window)
         current_frame = glfw.get_time()
         self.delta_time = current_frame - self.last_frame

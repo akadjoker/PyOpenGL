@@ -84,8 +84,8 @@ class Shader:
         location = self.uniforms.get(name)
         if location is not None:
             glUniformMatrix4fv(location, 1, GL_FALSE, matrix)
-        else:
-            print(f"Uniform '{name}' not found.")
+        #else:
+        #    print(f"Uniform '{name}' not found.")
 
     def set_float(self, name, value):
         location = self.uniforms.get(name)

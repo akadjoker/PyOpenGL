@@ -1,12 +1,14 @@
 import core 
 from core.core import *
 from core.mesh import *
+from core.input import Key
 import sys
 import glm
 import math    
 
 core = Core(720, 480, "OpenGL Demo")
 render = core.render
+input = core.input
 
 render.load_texture("assets/wabbit_alpha.png")
 
@@ -53,6 +55,9 @@ while core.run():
     render.clear()
     render.render_mesh(mesh)
     core.flip()
+
+    if input.keyboard_check(65):
+        print("A")
 
 core.close() 
 

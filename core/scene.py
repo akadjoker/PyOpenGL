@@ -41,6 +41,7 @@ class Transform:
         scale_matrix = glm.scale(glm.mat4(1.0), self.scale)
         self.matrix = translation_matrix * rotation_matrix * scale_matrix
 
+
 class Entity:
     INVALID_LOCALTFORM = 1
     INVALID_WORLDTFORM = 2
@@ -113,6 +114,24 @@ class Entity:
             self.set_local_tform(t)
 
     # Métodos para obter transformações locais
+
+    def get_local_x(self):
+        return self.local_pos.x
+    def get_local_y(self):
+        return self.local_pos.y
+    def get_local_z(self):
+        return self.local_pos.z
+    
+    def set_local_x(self, x):
+        self.local_pos.x = x
+        self.invalidate_local()
+    def set_local_y(self, y):
+        self.local_pos.y = y
+        self.invalidate_local()
+    def set_local_z(self, z):
+        self.local_pos.z = z
+        self.invalidate_local()
+
     def get_local_position(self):
         return self.local_pos
 
@@ -203,12 +222,18 @@ class Entity:
 
 
     def turn(self, p, y, r, global_space=False):
-        quat_rotation = rotationQuat(p * dtor, y * dtor, r * dtor)
+        quat_rotation = glm.quat(glm.vec3(glm.radians( p), glm.radians(y),  glm.radians(r)))
         if global_space:
             self.set_world_rotation(quat_rotation * self.get_world_rotation())
         else:
             self.set_local_rotation(self.get_local_rotation() * quat_rotation)
 
+    def rotate(self, p, y, r, global_space=False):
+        quat_rotation = glm.quat(glm.vec3(glm.radians( p), glm.radians(y),  glm.radians(r)))
+        if global_space:
+            self.set_world_rotation(quat_rotation)
+        else:
+            self.set_local_rotation(quat_rotation)
 
     def translate(self, x, y, z, global_space=False):
         if global_space:
@@ -231,20 +256,16 @@ class Entity:
             self.set_local_scale(glm.vec3(x, y, z))
 
 
-    def rotate(self, p, y, r, global_space=False):
-        quat_rotation = rotationQuat(p * dtor, y * dtor, r * dtor)
-        if global_space:
-            self.set_world_rotation(quat_rotation)
-        else:
-            self.set_local_rotation(quat_rotation)
 
 
     def point(self, target, roll=0):
         v = target.get_world_tform().position - self.get_world_tform().position
         pitch = glm.atan(v.y, glm.length(glm.vec2(v.x, v.z)))  # Inclinação (pitch)
         yaw = glm.atan(v.x, v.z)  # Direção (yaw)
-        roll = roll * dtor
-        self.set_world_rotation(rotationQuat(pitch, yaw, roll))
+        roll = glm.radians(roll)
+        quat_rotation = glm.quat(glm.vec3(pitch, yaw, roll))
+        self.set_world_rotation(quat_rotation)
+
 
     def look_at(self, target_position):
         direction = glm.normalize(target_position - self.get_world_position())
@@ -350,8 +371,6 @@ class Entity:
     
 
 
-import glm
-
 class Camera(Entity):
     def __init__(self, fov=45.0, aspect_ratio=16/9, near_plane=0.1, far_plane=100.0):
         super().__init__()
@@ -363,8 +382,10 @@ class Camera(Entity):
 
         self.projection_matrix = glm.perspective(glm.radians(self.fov), self.aspect_ratio, self.near_plane, self.far_plane)
 
+
     def get_view_matrix(self):
-        return glm.inverse(self.get_world_tform().matrix)
+        world_tform = self.get_world_tform().matrix
+        return glm.inverse(world_tform)
 
     def set_perspective(self, fov, aspect_ratio, near_plane, far_plane):
         self.fov = fov
@@ -378,3 +399,31 @@ class Camera(Entity):
 
     def get_projection_matrix(self):
         return self.projection_matrix
+
+
+class CameraFPS(Camera):
+    def __init__(self, fov=45.0, aspect_ratio=16/9, near_plane=0.1, far_plane=100.0):
+        super().__init__(fov, aspect_ratio, near_plane, far_plane)
+        self.y = 0
+        self.speed_x = 0
+        self.speed_z = 0
+
+    def move_forward(self, delta):
+        self.speed_z -= delta
+
+    def move_backward(self, delta):
+        self.speed_z += delta
+
+    def strafe_right(self, delta):
+        self.speed_x += delta 
+
+    def strafe_left(self, delta):
+        self.speed_x -= delta
+
+    def update(self):
+
+        self.y = self.get_local_y()
+        self.speed_x *= 0.9
+        self.speed_z *= 0.9
+        self.move(self.speed_x, 0, self.speed_z)
+        self.set_local_y(self.y)
