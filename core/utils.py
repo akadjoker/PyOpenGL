@@ -1,5 +1,5 @@
 import glm
-import math  
+
 
 class Rectangle:
     def __init__(self, x, y, width, height):
@@ -19,6 +19,17 @@ class Rectangle:
     
     def intersects(self, other):
         return not (self.x > other.x + other.width or self.x + self.width < other.x or self.y > other.y + other.height or self.y + self.height < other.y)
+
+
+
+def create_rectangle_atlas( width, height, count_x, count_y):
+    w = width / count_x
+    h = height / count_y
+    bounds = []
+    for y in range(count_y):
+        for x in range(count_x):
+            bounds.append(Rectangle(x * w, y * h, w, h))
+    return bounds
 
 
 class Plane3D:
@@ -56,3 +67,7 @@ class BoundingBox:
             self.max.y = y
         if self.max.z < z:
             self.max.z = z
+
+
+
+
