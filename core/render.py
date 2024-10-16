@@ -4,8 +4,9 @@ import glm
 from OpenGL.GL import *
 from .color import *
 from .utils import Rectangle
-from.texture import Texture
+from.texture import *
 from .shader import Shader
+from .material import SolidMaterial
 
 class BlendMode(Enum):
     NONE=0,
@@ -38,6 +39,20 @@ class FaceMode(Enum):
     CCW= 1
 
 
+PROJECTION_MATRIX = 0x0000
+MODEL_MATRIX      = 0x0001
+VIEW_MATRIX       = 0x0002
+
+TRIANGLES = 0
+TRIANGLE_STRIP = 1
+TRIANGLE_FAN = 2
+LINES     = 3
+LINE_STRIP= 4
+LINE_LOOP = 5
+POINTS    = 6
+
+
+
 class Render:
     program = -1
     width = 0
@@ -46,21 +61,28 @@ class Render:
     blend = False
     blend_mode = BlendMode.NONE
     set_cull_mode = CullMode.NONE
+    matrix=[]
     cull = False
     material = None
     depth_test = False
+    scissor_test = False
+    scissor_box = Rectangle(0, 0, 1, 1)
     triangles = 0
     vertexes = 0
     textures = 0
     programs = 0
     view_matrix = None
     projection_matrix = None
-    model_matrix = None
     clear_flag = GL_COLOR_BUFFER_BIT
     clear_color = BLACK
     layers = [0] * 6
     texture_assets = {}
     shaders_assets = {}
+    use_transform = False
+    stack = []
+    material2D = None
+    defaultTexture = None
+
 
     @staticmethod
     def reset():
@@ -71,13 +93,30 @@ class Render:
         Render.vertexes = 0
         Render.layers = [0] * 6
 
+            
+    @staticmethod
+    def init():
+        Render.program = -1
+        Render.textures = 0
+        Render.triangles = 0
+        Render.programs = 0
+        Render.vertexes = 0
+        Render.layers = [0] * 6
+        Render.matrix.append(glm.mat4(1.0))
+        Render.matrix.append(glm.mat4(1.0))
+        Render.matrix.append(glm.mat4(1.0))
+        Render.defaultTexture = Texture2D()
+        Render.defaultTexture.create(1, 1, ColorFormat.RGBA, [255, 255, 255, 255])
+        
+
+        
     @staticmethod
     def load_texture(file_path):
         name = file_path.split("/")[-1].split(".")[0]
         if name in Render.texture_assets:
             print(f"Texture {name} already loaded")
             return Render.texture_assets[name]
-        texture = Texture()
+        texture = Texture2D()
         texture.load(file_path)
         Render.texture_assets[name] = texture
         return texture
@@ -104,7 +143,7 @@ class Render:
 
     @staticmethod
     def create_texture(width, height, format, bytes):
-        texture = Texture()
+        texture = Texture2D()
         texture.create(width, height, format, bytes)
         return texture
 
@@ -130,6 +169,9 @@ class Render:
         else:
             glDisable(GL_DEPTH_TEST)
 
+
+
+
     @staticmethod
     def set_material(material):
         Render.material = material
@@ -143,12 +185,9 @@ class Render:
         if mesh.tris == 0 or mesh.vrtx == 0:
             return
         Render.set_material(mesh.material)
-        if Render.model_matrix is not None:
-            Render.material.shader.set_matrix4fv("uModel", glm.value_ptr(Render.model_matrix))
-        if Render.view_matrix is not None:
-            Render.material.shader.set_matrix4fv("uView", glm.value_ptr(Render.view_matrix))
-        if Render.projection_matrix is not None:
-            Render.material.shader.set_matrix4fv("uProjection", glm.value_ptr(Render.projection_matrix))
+        Render.material.shader.set_matrix4fv("uModel", glm.value_ptr(Render.matrix[MODEL_MATRIX]))
+        Render.material.shader.set_matrix4fv("uView", glm.value_ptr(Render.matrix[VIEW_MATRIX]))
+        Render.material.shader.set_matrix4fv("uProjection", glm.value_ptr(Render.matrix[PROJECTION_MATRIX]))
         glBindVertexArray(mesh.vao)
         glDrawElements(mesh.mode, mesh.tris, GL_UNSIGNED_INT, None)
         Render.triangles += mesh.tris // 3
@@ -163,6 +202,16 @@ class Render:
             glEnable(GL_BLEND)
         else:
             glDisable(GL_BLEND)
+    
+    @staticmethod
+    def set_scissor_test(enable):
+        if Render.scissor_test == enable:
+            return
+        Render.scissor_test = enable
+        if enable:
+            glEnable(GL_SCISSOR_TEST)
+        else:
+            glDisable(GL_SCISSOR_TEST)
 
     @staticmethod
     def set_cull(enable):
@@ -234,19 +283,27 @@ class Render:
         Render.view_port.y = y
         Render.view_port.width = width
         Render.view_port.height = height
+        Render.width = width
+        Render.height = height
         glViewport(x, y, width, height)
+    
+    @staticmethod
+    def set_scissor(x, y, width, height):
+        if (Render.scissor_box.x == x and Render.scissor_box.y == y and
+            Render.scissor_box.width == width and Render.scissor_box.height == height):
+            return
+        Render.scissor_box.x = x
+        Render.scissor_box.y = y
+        Render.scissor_box.width = width
+        Render.scissor_box.height = height
+        inverted_y = Render.height - (y + height)
+        glScissor(x, inverted_y, width, height)
 
     @staticmethod
-    def set_view_matrix(matrix):
-        Render.view_matrix = matrix
+    def set_matrix(mode,matrix):
+        Render.matrix[mode] = matrix
 
-    @staticmethod
-    def set_projection_matrix(matrix):
-        Render.projection_matrix = matrix
-
-    @staticmethod
-    def set_model_matrix(matrix):
-        Render.model_matrix = matrix
+   
 
     @staticmethod
     def set_program(program):
@@ -262,3 +319,48 @@ class Render:
     @staticmethod
     def clear():
         glClear(Render.clear_flag)
+
+
+
+
+    @staticmethod
+    def push_matrix():
+        Render.use_transform = True
+        Render.stack.append(glm.mat4(Render.matrix[MODEL_MATRIX]))  
+
+    @staticmethod
+    def pop_matrix():
+        if len(Render.stack) > 0:
+            Render.use_transform = False
+            Render.matrix[MODEL_MATRIX] = Render.stack.pop()  
+
+    @staticmethod
+    def identity():
+        if len(Render.stack) > 0:
+            Render.stack[-1] = glm.mat4(1.0)  
+            Render.matrix[MODEL_MATRIX] = glm.mat4(Render.stack[-1])
+
+    @staticmethod
+    def scale(x, y, z):
+        if len(Render.stack) > 0:
+            Render.stack[-1] = glm.scale(Render.stack[-1], glm.vec3(x, y, z)) 
+            Render.matrix[MODEL_MATRIX] = glm.mat4(Render.stack[-1])  
+
+    @staticmethod
+    def translate(x, y, z):
+        if len(Render.stack) > 0:
+            Render.stack[-1] = glm.translate(Render.stack[-1], glm.vec3(x, y, z))  
+            Render.matrix[MODEL_MATRIX] = glm.mat4(Render.stack[-1])
+
+    @staticmethod
+    def rotate(angle, x, y, z):
+        if len(Render.stack) > 0:
+            Render.stack[-1] = glm.rotate(Render.stack[-1], glm.radians(angle), glm.vec3(x, y, z)) 
+            Render.matrix[MODEL_MATRIX] = glm.mat4(Render.stack[-1])
+
+    @staticmethod
+    def rotation(x, y, z, w):
+        if len(Render.stack) > 0:
+            rotation_quat = glm.quat(w, x, y, z)  
+            Render.stack[-1] = Render.stack[-1] * glm.mat4_cast(rotation_quat)  
+            Render.matrix[MODEL_MATRIX] = glm.mat4(Render.stack[-1])

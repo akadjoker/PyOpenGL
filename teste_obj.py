@@ -42,7 +42,9 @@ model_mat = glm.mat4(1.0)
 
 
 
-Render.set_model_matrix(model_mat)
+
+
+Render.set_matrix(MODEL_MATRIX, model_mat)
 
 rotate =0
 mouseSensitivity = 90
@@ -76,18 +78,18 @@ while core.run():
 
 
 
-    Render.set_view_matrix(camera.get_view_matrix())
-    Render.set_projection_matrix(camera.get_projection_matrix())
+    Render.set_matrix(VIEW_MATRIX,camera.get_view_matrix())
+    Render.set_matrix(PROJECTION_MATRIX,camera.get_projection_matrix())
 
 
     model_mat = glm.mat4(1.0)
     model_mat = entity.get_world_tform().matrix
-    Render.set_model_matrix(model_mat)
+    Render.set_matrix(MODEL_MATRIX, model_mat)
     Render.render_mesh(mesh)
     rotate += 1
 
     model_mat = glm.mat4(1.0)
-    Render.set_model_matrix(model_mat)
+    Render.set_matrix(MODEL_MATRIX, model_mat)
     Render.render_mesh(plane)
 
    

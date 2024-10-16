@@ -427,3 +427,46 @@ class CameraFPS(Camera):
         self.speed_z *= 0.9
         self.move(self.speed_x, 0, self.speed_z)
         self.set_local_y(self.y)
+
+
+
+class Camera2D:
+    def __init__(self, width, height):
+        self.position = glm.vec2(0.0, 0.0)  # Posição da câmera
+        self.pivot = glm.vec2(0.0, 0.0)     # Pivô da câmera
+        self.rotation = 0.0                 # Rotação da câmera (em rad)
+        self.scale = glm.vec2(1.0, 1.0)   
+        self.width = width                 
+        self.height = height               
+        self.view_matrix = glm.mat4(1.0)    # Matriz de visualização
+        self.projection_matrix = glm.ortho(0.0, width, height, 0.0)  # Matriz ortográfica
+
+    def update(self):
+        m_origin = glm.translate(glm.mat4(1.0), glm.vec3(-self.position.x, -self.position.y, 0.0))
+        m_rotation = glm.rotate(glm.mat4(1.0), self.rotation, glm.vec3(0.0, 0.0, 1.0))
+        m_scale = glm.scale(glm.mat4(1.0), glm.vec3(self.scale.x, self.scale.y, 1.0))
+        m_translation = glm.translate(glm.mat4(1.0), glm.vec3(self.pivot.x, self.pivot.y, 0.0))
+        self.view_matrix = m_translation * m_rotation * m_scale * m_origin
+
+    def set_size(self, width, height):
+        self.width = width
+        self.height = height
+        self.projection_matrix = glm.ortho(0.0, width, height, 0.0)
+
+    def get_view_matrix(self):
+        return self.view_matrix
+    
+    def get_projection_matrix(self):
+        return self.projection_matrix
+
+    def get_combined_matrix(self):
+        return self.projection_matrix * self.view_matrix
+
+    def set_position(self, x, y):
+        self.position = glm.vec2(x, y)
+
+    def set_rotation(self, angle_degrees):
+        self.rotation = glm.radians(angle_degrees)
+
+    def set_scale(self, scale_x, scale_y):
+        self.scale = glm.vec2(scale_x, scale_y)

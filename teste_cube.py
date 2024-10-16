@@ -36,9 +36,10 @@ view_mat = glm.lookAt(glm.vec3(0.0, 0.5, -5.0), glm.vec3(0.0, 0.0, 5.0), glm.vec
 proj_mat = glm.perspective(glm.radians(45.0), core.width / core.height, 0.1, 1000.0)
 model_mat = glm.mat4(1.0)
 
-Render.set_view_matrix(view_mat)
-Render.set_projection_matrix(proj_mat)
-Render.set_model_matrix(model_mat)
+Render.set_matrix(VIEW_MATRIX, view_mat)
+Render.set_matrix(PROJECTION_MATRIX, proj_mat)
+
+Render.set_matrix(MODEL_MATRIX, model_mat)
 
 rotate =0
 
@@ -52,7 +53,7 @@ while core.run():
     
 
 
-    Render.set_model_matrix(model_mat)
+    Render.set_matrix(MODEL_MATRIX, model_mat)
     Render.render_mesh(mesh)
     core.flip()
 

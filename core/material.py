@@ -128,3 +128,72 @@ class TextureMaterial(Material):
         self.shader.set_int("texture0",0)
     
 
+class SolidMaterial(Material):
+    def __init__(self):
+        super().__init__("Solid")
+        self.attributes=[Attribute.POSITION3D,Attribute.COLOR4] 
+        vertex="""#version 330
+
+        layout(location = 0) in vec3 aPos;
+        layout(location = 1) in vec4 aColor;
+        uniform mat4 uProjection;
+        uniform mat4 uView;
+      
+        out vec4 vColor;
+        void main()
+        {
+            vColor = aColor;
+            gl_Position =  uProjection * uView * vec4(aPos, 1.0);
+        }
+        """
+
+        fragment="""#version 330
+        in vec4 vColor;
+        out vec4 fragColor;
+        void main()
+        {
+            fragColor = vColor;
+        }
+        """
+        self.shader.create_shader(vertex,fragment)
+
+
+class SpriteMaterial(Material):
+    def __init__(self):
+        super().__init__("Sprite")
+        self.attributes=[Attribute.POSITION3D,Attribute.TEXCOORD0,Attribute.COLOR4] 
+
+        vertex="""#version 330
+
+        layout(location = 0) in vec3 aPos;
+        layout(location = 1) in vec2 aTexCoord;
+        layout(location = 2) in vec4 aColor;
+
+        
+        uniform mat4 uProjection;
+        uniform mat4 uView;
+
+        out vec2 vTexCoord;
+        out vec4 vColor;
+        void main()
+        {
+
+            vColor = aColor;
+            vTexCoord = aTexCoord;
+            gl_Position = uProjection * uView *   vec4(aPos, 1.0);
+        }
+        """
+
+        fragment="""#version 330
+        out vec4 fragColor;
+
+        in vec2 vTexCoord;
+        in vec4 vColor;
+        uniform sampler2D texture0;
+        void main()
+        {
+            fragColor =   texture(texture0, vTexCoord)  * vColor;
+        }
+        """
+        self.shader.create_shader(vertex,fragment)
+        self.shader.set_int("texture0",0)
