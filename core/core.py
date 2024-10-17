@@ -2,6 +2,7 @@ from enum import Enum
 import glfw
 from OpenGL.GL import *
 
+import base64
 from .shader import Shader
 from .texture import Texture
 from .color import *
@@ -9,7 +10,8 @@ from .material import *
 from .utils import Rectangle,Timer
 from .input import Input
 from .render import *
-
+from .font import Font
+from .data import defaultFontData,defaultFontImage
 
 class Core:
     def __init__(self, width=800, height=600, title="OpenGL"):
@@ -52,6 +54,11 @@ class Core:
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         Render.init()
         Render.set_viewport(0, 0, width, height)
+        Render.defaultFont = Font(1024)
+        fontData = base64.b64decode(defaultFontData).decode('utf-8')
+        texture = Texture2D()
+        texture.decode(defaultFontImage)
+        Render.defaultFont.create(fontData, texture)
 
         
         

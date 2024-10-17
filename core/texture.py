@@ -2,6 +2,8 @@ from enum import Enum
 import numpy as np
 from OpenGL.GL import *
 from PIL import Image
+from io import BytesIO
+import base64
 
 class ColorFormat(Enum):
     GRAYSCALE  = 1,       # 8 bit per pixel (no alpha)
@@ -35,9 +37,9 @@ class Texture2D(Texture):
         
         glFormat = 0
         if self.format == ColorFormat.GRAYSCALE:
-            glFormat = GL_LUMINANCE
+            glFormat = GL_RED 
         elif self.format == ColorFormat.GRAY_ALPHA:
-            glFormat = GL_LUMINANCE_ALPHA
+            glFormat = GL_RG
         elif self.format == ColorFormat.RGB:
             glFormat = GL_RGB
         elif self.format == ColorFormat.RGBA:
@@ -49,6 +51,48 @@ class Texture2D(Texture):
         glTexImage2D(GL_TEXTURE_2D, 0, glFormat, width, height, 0,  glFormat, GL_UNSIGNED_BYTE, img_data)
         glGenerateMipmap(GL_TEXTURE_2D)
         glBindTexture(GL_TEXTURE_2D, 0)
+
+
+    def decode(self, base64_string):
+        image_data = base64.b64decode(base64_string)
+        image = Image.open(BytesIO(image_data))
+        if image.mode != 'RGBA':
+            image = image.convert('RGBA')
+    
+        
+        img_data = np.array(image, dtype=np.uint8)
+        self.width, self.height = image.size
+
+        img_mode = image.mode
+        glFormat = 0
+        if img_mode == "L": 
+            self.format = ColorFormat.GRAYSCALE
+            glFormat = GL_RED 
+        elif img_mode == "LA":  
+            self.format = ColorFormat.GRAY_ALPHA
+            glFormat = GL_RG 
+        elif img_mode == "RGB": 
+            glFormat = GL_RGB
+            self.format = ColorFormat.RGB
+        elif img_mode == "RGBA": 
+            self.format = ColorFormat.RGBA
+            glFormat = GL_RGBA
+
+        self.id = glGenTextures(1)
+        glBindTexture(GL_TEXTURE_2D, self.id)
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+
+  
+        glTexImage2D(GL_TEXTURE_2D, 0,  glFormat, self.width, self.height, 0,  glFormat, GL_UNSIGNED_BYTE, img_data)
+        glGenerateMipmap(GL_TEXTURE_2D)
+
+        glBindTexture(GL_TEXTURE_2D, 0)
+        print(f"Texture   {self.id} {self.format} {self.width}x{self.height} loaded" )
+                
 
     def load(self, file_path):
         image = Image.open(file_path)
@@ -62,10 +106,10 @@ class Texture2D(Texture):
         
         if img_mode == "L": 
             self.format = ColorFormat.GRAYSCALE
-            glFormat = GL_LUMINANCE
+            glFormat = GL_RED
         elif img_mode == "LA":  
             self.format = ColorFormat.GRAY_ALPHA
-            glFormat = GL_LUMINANCE_ALPHA
+            glFormat = GL_RG
         elif img_mode == "RGB": 
             glFormat = GL_RGB
             self.format = ColorFormat.RGB

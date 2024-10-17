@@ -8,6 +8,13 @@ class Color:
         self.data = [r, g, b, a]
    
 
+    def fade(self, factor):
+        if factor > 1.0:
+            factor = 1.0
+        if factor < 0.0:
+            factor = 0.0
+        self.data[3] = factor
+
     
 RED =  Color(1.0, 0.0, 0.0, 1.0)
 GREEN =  Color(0.0, 1.0, 0.0, 1.0)

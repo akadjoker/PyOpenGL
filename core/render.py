@@ -8,6 +8,8 @@ from.texture import *
 from .shader import Shader
 from .material import SolidMaterial
 
+
+
 class BlendMode(Enum):
     NONE=0,
     Normal= 1,
@@ -82,6 +84,7 @@ class Render:
     stack = []
     material2D = None
     defaultTexture = None
+    defaultFont = None
 
 
     @staticmethod
@@ -107,6 +110,10 @@ class Render:
         Render.matrix.append(glm.mat4(1.0))
         Render.defaultTexture = Texture2D()
         Render.defaultTexture.create(1, 1, ColorFormat.RGBA, [255, 255, 255, 255])
+        #Render.defaultFont = Font(1024)
+        #data = base64.b64decode(data.)
+
+
         
 
         
@@ -298,6 +305,15 @@ class Render:
         Render.scissor_box.height = height
         inverted_y = Render.height - (y + height)
         glScissor(x, inverted_y, width, height)
+
+
+    @staticmethod
+    def get_view_port():
+        return Render.view_port
+
+    @staticmethod
+    def get_scissor_box():
+        return Render.scissor_box
 
     @staticmethod
     def set_matrix(mode,matrix):

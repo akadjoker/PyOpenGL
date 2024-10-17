@@ -2,6 +2,7 @@ from enum import Enum
 import numpy as np
 from OpenGL.GL import *
 from .core import *
+from .render import Render
 from .utils import Quad
 from .texture import Texture
 from .material import SolidMaterial,SpriteMaterial
@@ -64,8 +65,6 @@ class Font:
         self.flip_y = False
         self.depth = 0.0
         self.size=20
-        self.invTexWidth = 1.0
-        self.invTexHeight = 1.0
         self.stretching_texel = False
 
         k = 0
@@ -358,7 +357,7 @@ class Font:
         offset_x = 0
         for i in range(length):
             c = ord(text[i])
-            char_info = self.mCharInfo[c - 32]  
+            char_info = self.CharInfo[c - 32]  
             if char_info is None:
                 continue
             clip_w = char_info.width
@@ -368,6 +367,12 @@ class Font:
     def writef(self, x, y, *args):
         text = " ".join(map(str, args))
         self.write(x, y, text)
+
+    def get_width(self):
+        return self.maxWidth * self.size
+
+    def get_height(self):
+        return self.maxHeight * self.size
 
     def write(self, x, y, text):
         scale = self.size / self.maxWidth * 0.5
@@ -431,3 +436,9 @@ class Font:
 
     def set_size(self, size):
         self.size = size
+    
+    def get_max_width(self):
+        return self.maxWidth
+
+    def get_max_height(self):
+        return self.maxHeight
