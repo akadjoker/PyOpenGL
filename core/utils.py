@@ -1,6 +1,6 @@
 import glm
 import glfw
-
+import math
 
 
 
@@ -19,6 +19,9 @@ class Rectangle:
         self.y = y
         self.width = width
         self.height = height
+
+    def __str__(self):
+        return f"Rectangle(x={self.x}, y={self.y}, width={self.width}, height={self.height})"
 
     def contains(self, x, y):
         return x >= self.x and x < self.x + self.width and y >= self.y and y < self.y + self.height
@@ -79,7 +82,12 @@ class BoundingBox:
         if self.max.z < z:
             self.max.z = z
 
-
+class Quad:
+    def __init__(self, x, y, t, v):
+        self.x = x
+        self.y = y
+        self.tx = t
+        self.ty = v
 
 class Timer:
     def __init__(self):
@@ -146,7 +154,12 @@ class FPSCounter:
 
 
 
-
+def rotate_point(px, py, cx, cy, angle):
+    cos_theta = math.cos(math.radians(angle))
+    sin_theta = math.sin(math.radians(angle))
+    dx = px - cx
+    dy = py - cy
+    return (cx + cos_theta * dx - sin_theta * dy, cy + sin_theta * dx + cos_theta * dy)
 
 
 

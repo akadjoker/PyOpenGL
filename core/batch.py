@@ -112,13 +112,29 @@ class Batch:
 
     def enable_clip(self,value):
         self.clip_enabled = value
-        
+    
+    def set_rgb(self, r, g, b):
+        self.color_r = r
+        self.color_g = g
+        self.color_b = b
+    def set_alpha(self, a):
+        self.color_a = a
+    def set_color(self, color):
+        self.color_r = color.data[0]
+        self.color_g = color.data[1]
+        self.color_b = color.data[2]
+        self.color_a = color.data[3]
 
 
 class LinesBatch(Batch):
     def __init__(self, maxVertex):
         super().__init__(maxVertex)
 
+    def rectangle(self, x, y, width, height):
+        self.line2d(x, y, x + width, y)
+        self.line2d(x + width, y, x + width, y + height)
+        self.line2d(x + width, y + height, x, y + height)
+        self.line2d(x, y + height, x, y)
 
     def circle(self, x, y, radius, segments=36):
         angle_increment = 2 * math.pi / segments
@@ -343,182 +359,3 @@ class FillBatch(Batch):
         glDrawArrays(GL_TRIANGLES, 0, self.vertexCount)
         self.count = 0
         self.vertexCount = 0
-
-
-class SpriteBatch:
-    def __init__(self, maxVertex):
-        self.maxVertex = maxVertex
-        self.stride = 9  # 3 para posição, 2 para textura, 4 para cor
-        self.vertices = [0.0] * (maxVertex * self.stride)
-        self.indices = []
-        self.vertexCount = 0
-        self.maxElemnts = maxVertex * 4 * 6
-        self.totalAlloc = math.floor((self.maxVertex * 4 * self.stride * 4) / 9)
-        
-        self.defaultTexture = Texture2D()
-        self.pixels = np.zeros((64, 64, 3), dtype=np.uint8)
-        for w in range(64):
-            for h in range(64):
-                self.pixels[w, h] = [255, 0, 255]  
-        self.defaultTexture.create(64, 64, ColorFormat.RGB, self.pixels)
-        self.currentBaseTexture = self.defaultTexture
-
-        self.count = 0
-        self.color_r = 1.0
-        self.color_g = 1.0
-        self.color_b = 1.0
-        self.color_a = 1.0
-        self.tu = 0
-        self.tv = 0
-        self.flip_x = False
-        self.flip_y = False
-        self.depth = 0.0
-        self.invTexWidth = 1.0
-        self.invTexHeight = 1.0
-
-        k = 0
-        for i in range(0, self.maxElemnts // 6):
-            self.indices.append(4 * k + 0)
-            self.indices.append(4 * k + 1)
-            self.indices.append(4 * k + 2)
-            self.indices.append(4 * k + 0)
-            self.indices.append(4 * k + 2)
-            self.indices.append(4 * k + 3)
-            k += 1
-
-        self.material = SpriteMaterial()
-        self.init()
-
-    def init(self):
-        self.vao = glGenVertexArrays(1)
-        self.vbo = glGenBuffers(1)
-        self.ebo = glGenBuffers(1)
-
-        glBindVertexArray(self.vao)
-
-
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.ebo)
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, np.array(self.indices, dtype=np.uint32), GL_STATIC_DRAW)
-
-
-        glBindBuffer(GL_ARRAY_BUFFER, self.vbo)
-        glBufferData(GL_ARRAY_BUFFER, len(self.vertices) * 4, None, GL_DYNAMIC_DRAW)
-
-
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, self.stride * 4, None)
-        glEnableVertexAttribArray(0)
-
-
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, self.stride * 4, ctypes.c_void_p(12))
-        glEnableVertexAttribArray(1)
-
-        glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, self.stride * 4, ctypes.c_void_p(20))
-        glEnableVertexAttribArray(2)
-
-
-    def draw_sprite(self,x, y, width, height, tu0, tv0, tu1, tv1):
-        
-        # Canto inferior esquerdo
-        self.vertices[self.count] = x
-        self.vertices[self.count + 1] = y
-        self.vertices[self.count + 2] = self.depth
-        self.vertices[self.count + 3] = tu0
-        self.vertices[self.count + 4] = tv1
-        self.vertices[self.count + 5] = self.color_r
-        self.vertices[self.count + 6] = self.color_g
-        self.vertices[self.count + 7] = self.color_b
-        self.vertices[self.count + 8] = self.color_a
-        self.count += self.stride
-
-        # Canto inferior direito
-        self.vertices[self.count] = x + width
-        self.vertices[self.count + 1] = y
-        self.vertices[self.count + 2] = self.depth
-        self.vertices[self.count + 3] = tu1
-        self.vertices[self.count + 4] = tv1
-        self.vertices[self.count + 5] = self.color_r
-        self.vertices[self.count + 6] = self.color_g
-        self.vertices[self.count + 7] = self.color_b
-        self.vertices[self.count + 8] = self.color_a
-
-        self.count += self.stride
-
-        # Canto superior direito
-        self.vertices[self.count] = x + width
-        self.vertices[self.count + 1] = y + height
-        self.vertices[self.count + 2] = self.depth
-        self.vertices[self.count + 3] = tu1
-        self.vertices[self.count + 4] = tv0
-        self.vertices[self.count + 5] = self.color_r
-        self.vertices[self.count + 6] = self.color_g
-        self.vertices[self.count + 7] = self.color_b
-        self.vertices[self.count + 8] = self.color_a
-
-        self.count += self.stride
-
-        # Canto superior esquerdo
-        self.vertices[self.count] = x
-        self.vertices[self.count + 1] = y + height
-        self.vertices[self.count + 2] = self.depth
-        self.vertices[self.count + 3] = tu0
-        self.vertices[self.count + 4] = tv0
-        self.vertices[self.count + 5] = self.color_r
-        self.vertices[self.count + 6] = self.color_g
-        self.vertices[self.count + 7] = self.color_b
-        self.vertices[self.count + 8] = self.color_a
-
-        self.count += self.stride
-        self.vertexCount += 4
-
-    def _switch_texture(self, texture):
-        self.defaultTexture = texture
-        self.invTexWidth =  1.0 / texture.width
-        self.invTexHeight = 1.0 / texture.height
-
-    def vertex3f(self, x, y, z):
-        self.vertices[self.count] = x
-        self.vertices[self.count + 1] = y
-        self.vertices[self.count + 2] = z
-        self.vertices[self.count + 3] = self.tu
-        self.vertices[self.count + 4] = self.tv
-        self.vertices[self.count + 5] = self.color_r
-        self.vertices[self.count + 6] = self.color_g
-        self.vertices[self.count + 7] = self.color_b
-        self.vertices[self.count + 8] = self.color_a
-        self.count += self.stride
-        self.vertexCount += 1
-
-    def textCoords(self, x, y):
-        self.tu = x
-        self.tv = y
-
-    def render(self):
-        if self.vertexCount == 0:
-            return
-
-        self._flush()
-
-    def _flush(self):
-        if self.vertexCount == 0:
-            return
-
-        glBindVertexArray(self.vao)
-        
-        Render.set_material(self.material)
-        Render.set_texture(self.defaultTexture.id, 0)
-        self.material.shader.set_matrix4fv("uView", glm.value_ptr(Render.matrix[VIEW_MATRIX]))
-        self.material.shader.set_matrix4fv("uProjection", glm.value_ptr(Render.matrix[PROJECTION_MATRIX]))
-  
-        glBindBuffer(GL_ARRAY_BUFFER, self.vbo)
-        glBufferSubData(GL_ARRAY_BUFFER, 0, self.count * 4, np.array(self.vertices, dtype=np.float32))
-
-        glDrawElements(GL_TRIANGLES,  (self.vertexCount // 4) * 6, GL_UNSIGNED_INT, None)
-
-        self.count = 0
-        self.vertexCount = 0
-
-
-    def draw(self,texture, x, y, width, height):
-        if (texture.id != self.defaultTexture.id):
-            self._switch_texture(texture)
-        

@@ -52,10 +52,10 @@ class Texture2D(Texture):
 
     def load(self, file_path):
         image = Image.open(file_path)
-        image = image.transpose(Image.FLIP_TOP_BOTTOM)  
+        #image = image.transpose(Image.FLIP_TOP_BOTTOM)  
 
         img_data = np.array(image, dtype=np.uint8)
-        width, height = image.size
+        self.width, self.height = image.size
 
         img_mode = image.mode
         glFormat = 0
@@ -82,9 +82,9 @@ class Texture2D(Texture):
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
 
   
-        glTexImage2D(GL_TEXTURE_2D, 0,  glFormat, width, height, 0,  glFormat, GL_UNSIGNED_BYTE, img_data)
+        glTexImage2D(GL_TEXTURE_2D, 0,  glFormat, self.width, self.height, 0,  glFormat, GL_UNSIGNED_BYTE, img_data)
         glGenerateMipmap(GL_TEXTURE_2D)
 
         glBindTexture(GL_TEXTURE_2D, 0)
-        print(f"Texture  {file_path} {self.id} {self.format} {width}x{height} loaded" )
+        print(f"Texture  {file_path} {self.id} {self.format} {self.width}x{self.height} loaded" )
                 

@@ -86,7 +86,7 @@ class Core:
     def get_delta_time(self):
         return self.time.get_delta_time()
     def get_fps(self):
-        return self.fps
+        return int(self.fps)
 
     def run(self):
         Render.reset()
@@ -105,8 +105,7 @@ class Core:
     
     def flip(self):
         glfw.swap_buffers(self.window)
-        glfw.set_window_title(self.window,f" {self.title} [triangles {Render.triangles} vertex {Render.vertexes}] [fps {int(self.fps)}]")
-
+   
 
     def close(self):
         glfw.terminate()

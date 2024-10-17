@@ -78,7 +78,7 @@ class Shader:
                 name = uniform_name.decode()
                 uniform_location = glGetUniformLocation(program, uniform_name)
                 self.uniforms[name] = uniform_location
-            print(self.uniforms)
+            #print(self.uniforms)
 
     def set_matrix4fv(self, name, matrix):
         location = self.uniforms.get(name)
