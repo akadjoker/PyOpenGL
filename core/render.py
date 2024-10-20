@@ -1,6 +1,7 @@
 from enum import Enum
 import glfw
 import glm
+import math
 from OpenGL.GL import *
 from .color import *
 from .utils import Rectangle,Ray3D,Frustum
@@ -42,11 +43,7 @@ class FaceMode(Enum):
     CCW= 1
 
 
-class LightType(Enum):
-    NONE = 0
-    DIRECTIONAL = 1
-    POINT = 2
-    SPOT = 3
+
 
 PROJECTION_MATRIX = 0x0000
 MODEL_MATRIX      = 0x0001
@@ -61,47 +58,7 @@ LINE_LOOP = 5
 POINTS    = 6
 
 
-class LightData:
-    def __init__(self):
-        self.camera=glm.vec3(0,0,0)
-        self.ambient=glm.vec3(0.2,0.2,0.2)
-        self.diffuse=glm.vec3(0.8,0.8,0.8)
-        self.specular=glm.vec3(1.0,1.0,1.0)
-        self.type = LightType.NONE
-        self.enable = True
 
-class DirectionalLightData(LightData):
-    def __init__(self):
-        super().__init__()
-        self.direction=glm.vec3(1,1,1)
-        self.type = LightType.DIRECTIONAL
-        self.shininess = 32.0
-        self.ambient=glm.vec3(0.2,0.2,0.2)
-        self.diffuse=glm.vec3(0.8,0.8,0.8)
-        self.specular=glm.vec3(1.0,1.0,1.0)
-
-
-class PointLightData(LightData):
-    def __init__(self):
-        super().__init__()
-        self.position=glm.vec3(0,0,0)
-        self.type = LightType.POINT
-        self.constant = 1.0
-        self.linear = 0.09
-        self.quadratic = 0.032
-        self.range = 100.0
-                    
-
-
-
-class SpotLightData(LightData):
-    def __init__(self):
-        super().__init__()
-        self.position=glm.vec3(0,0,0)
-        self.direction=glm.vec3(0,0,0)
-        self.cutOff=glm.vec3(0,0,0)
-        self.outerCutOff=glm.vec3(0,0,0)
-        self.type = LightType.SPOT
 
 
 class Render:
@@ -130,7 +87,7 @@ class Render:
 
 
     stack = []
-    lights = []
+
 
     defaultTexture = None
     defaultFont = None
@@ -173,14 +130,6 @@ class Render:
         
 
     
-
-    @staticmethod
-    def add_light(light):
-        Render.lights.append(light)
-
-    @staticmethod
-    def get_light(index):
-        return Render.lights[index]
     
     @staticmethod
     def get_shader(name):
@@ -284,7 +233,14 @@ class Render:
         Render.triangles += mesh.tris // 3
         Render.vertices += mesh.vrtx
 
-
+    @staticmethod
+    def render_mesh_no_material(mesh):
+        if mesh.tris == 0 or mesh.vrtx == 0:
+            return
+        glBindVertexArray(mesh.vao)
+        glDrawElements(mesh.mode, mesh.tris, GL_UNSIGNED_INT, None)
+        Render.triangles += mesh.tris // 3
+        Render.vertices += mesh.vrtx
 
     @staticmethod
     def set_blend(enable):

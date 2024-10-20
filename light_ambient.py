@@ -24,9 +24,12 @@ pitch = 0.0  # Inicializa sem inclinação
 core = Core(1024, 920, "OpenGL Demo")
 
 
-Render.load_texture("assets/cube.png")
-Render.load_texture("assets/FloorTexture.png")
-Render.load_texture("assets/defaultTexture.png")
+Render.load_texture("assets/brickwall_diffuse.jpg","brickwall")
+Render.load_texture("assets/brickwall_specular.jpg","brickwall_specular")
+
+Render.load_texture("assets/defaultTexture.png","default")
+Render.load_texture("assets/defaultTexture_specular.png","default_specular")
+
 
 
 
@@ -43,9 +46,9 @@ plane = create_hill_plane_mesh(tile_size, tile_count, hill_height, hill_count, t
 
 #plane = create_plane(5,5,5,5)
 cube = create_cube()
-sphere = load_obj("assets/42.obj")
-sphere.translate(0.0, 2.0, 0.0)
-
+sphere = create_sphere(10, 10)
+mesh = load_obj("assets/room.obj")
+mesh.rotate(0,90,0)
 
 Render.set_blend(False)
 Render.set_depth_test(True)
@@ -55,8 +58,10 @@ Render.set_blend_mode(BlendMode.Normal)
 Render.set_clear_color(0.2,0.2,0.6)
 Render.set_clear_mode(True)
 
+Render.add_light(AmbientLightData())
 
-shader = SunShader()
+
+shader = AmbientShader()
 
 camera = Camera(45.0,core.width / core.height)
 camera.set_perspective(45.0, 16.0 / 9.0, 0.25, 4000.0)
@@ -65,9 +70,10 @@ camera.rotate(pitch, yaw, 0.0)
 
 scene.set_camera(camera)
 
-model = scene.create_model(shader)
-model.add_material(Material(Render.get_texture("defaultTexture")))
-model.add_mesh(plane)
+floor = scene.create_model(shader)
+floor.add_material(Material(Render.get_texture("default"), Render.get_texture("default_specular")))
+floor.add_mesh(plane)
+floor.add_mesh(mesh)
 #model.scale(20.0, 1.0, 20.0)
 
 # terrain = scene.create_terrain_block(shader,"assets/terrain-texture.jpg","assets/terrain-heightmap.png", 
@@ -78,13 +84,10 @@ model.add_mesh(plane)
 
 
 model = scene.create_model(shader)
-model.add_material(Material(Render.get_texture("cube")))
-model.add_material(Material(Render.get_texture("FloorTexture")))
-
+model.add_material(Material(Render.get_texture("brickwall"), Render.get_texture("brickwall_specular")))
 model.add_mesh(cube)
-model.add_mesh(sphere)
-
 model.translate(0.0, 1.0, 0.0)
+
 
 mouseSensitivity = 90
 
@@ -92,7 +95,8 @@ mouseSensitivity = 90
 
 Gui.init()
 lines = LinesBatch(1024*8)
-
+position = glm.vec3(0.0, 5.0, 0.0)
+range = 100.0
 
 while core.run():
     Render.set_viewport(0, 0, core.width, core.height)
@@ -136,8 +140,6 @@ while core.run():
     pick = False
     light = Render.get_light(0)
 
-    #ray = scene.camera_ray(Input.get_mouse_x(), Input.get_mouse_y())
-    ray = scene.unproject(Input.get_mouse_x(), Input.get_mouse_y())
 
 
 
@@ -147,21 +149,8 @@ while core.run():
     Render.set_clear_mode(True)
     Render.set_matrix(MODEL_MATRIX, glm.mat4(1.0))
     lines.grid(10, 10, True)
-    lines.cube(light.position.x, light.position.y, light.position.z, 0.5)
-
-    for node in scene.nodes:
-        if ray.intersects_box(node.get_bounding_box()):
-            lines.draw_bounding_box(node.get_bounding_box(), RED)
-            
-        else:
-            lines.draw_bounding_box(node.get_bounding_box(), GREEN)
-        # for mesh in node.meshes:
-        #         lines.draw_bounding_box(mesh.box, BLUE)
 
 
-
-    #if pick:
-    #    scene.debug(lines)
     lines.render() 
 
     Gui.begin(0,10, core.height-80, 260, 80, options={"background": True,'dragging': False, "bar": True, "title": "Stats"})
@@ -174,36 +163,35 @@ while core.run():
     Gui.end()
 
 
-    light.camera = camera.get_world_position()
 
     Gui.begin(1, 10,40, 300, 250, options={"background": True,'dragging': True, "bar": True, "title": "Light"})
     
-    Gui.label(120, 15, "Ambient Strength")
-    Gui.label(120, 35, "Specular Strength")
-    light.ambient_strength = Gui.slider(5, 5, 80,20, 0, 1.0,  light.ambient_strength)
-    light.specular_strength = Gui.slider(5, 25, 80,20, 0, 1.0,  light.specular_strength)
 
 
-    Gui.label(120, 55, "Light X")
-    Gui.label(120, 75, "Light Y")
-    Gui.label(120, 95, "Light Z")
-
-    light.position.x = Gui.slider(5, 45, 80,20, -100, 100,  light.position.x)
-    light.position.y = Gui.slider(5, 65, 80,20, -100, 100,  light.position.y)
-    light.position.z = Gui.slider(5, 85, 80,20, -100, 100,  light.position.z)
     
 
-    Gui.label(120, 115, "Light Color")
+    
 
-    light.color.r = Gui.slider(5, 105, 80,20, 0, 1.0,  light.color.r)
-    light.color.g = light.color.r
-    light.color.b = light.color.r
+
+    Gui.label(120, 155, "Light ambient")
+
+    light.ambient.r = Gui.slider(5, 145, 80,20, 0, 1.0,  light.ambient.r)
+    light.ambient.g = light.ambient.r
+    light.ambient.b = light.ambient.r
+
+
+
+
     
     Gui.end()
     
 
 
     Gui.render(core.width , core.height)
+
+
+
+
 
 
     core.flip()

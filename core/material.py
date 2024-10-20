@@ -7,7 +7,12 @@ from .shader import Shader, Attribute
 from .render import Render
 
 
-
+class LightType(Enum):
+    NONE = 0
+    AMBIENT = 1
+    DIRECTIONAL = 2
+    POINT = 3
+    SPOT = 4
 
 class Material:
     def __init__(self,diffuse=None,spacular=None):
@@ -242,19 +247,91 @@ class SunShader(Shader):
        
 
     def apply(self):
-        light = Render.get_light(0)
+        # light = Render.get_light(0)
 
-        self.set_vector3f("viewPos",light.camera)
-        self.set_vector3f("lightPos", light.position)
-        self.set_vector3f("lightColor", light.color)
-        self.set_vector3f("objectColor", light.object_color)
-        self.set_float("ambientStrength", light.ambient_strength)
-        self.set_float("specularStrength", light.specular_strength)
+        # self.set_vector3f("viewPos",light.camera)
+        # self.set_vector3f("lightPos", light.position)
+        # self.set_vector3f("lightColor", light.color)
+        # self.set_vector3f("objectColor", light.object_color)
+        # self.set_float("ambientStrength", light.ambient_strength)
+        # self.set_float("specularStrength", light.specular_strength)
+        pass
+
+
+
+
+
+class AmbientShader(Shader):
+    def __init__(self):
+        super().__init__()
+        self.attributes=[Attribute.POSITION3D,Attribute.TEXCOORD0,Attribute.NORMAL] 
+
+  
+        vertex="""#version 330 core
+
+        layout(location = 0) in vec3 aPos;
+        layout(location = 1) in vec2 aTexCoord;
+        layout(location = 2) in vec3 aNormal;
+
+        
+        uniform mat4 uProjection;
+        uniform mat4 uView;
+        uniform mat4 uModel;
+
+        out vec2 TexCoords;
+        out vec3 Normal;
+        out vec3 FragPos;
+        void main()
+        {
+            FragPos = vec3(uModel * vec4(aPos, 1.0));
+            TexCoords = aTexCoord;
+            Normal = mat3(transpose(inverse(uModel))) * aNormal;  
+            gl_Position =  uProjection * uView  *  vec4(FragPos, 1.0);
+        }
+        """
+
+        fragment="""#version 330 core
+        out vec4 FragColor;
+
+      
+        in vec2 TexCoords;
+        in vec3 Normal;
+        in vec3 FragPos;
+        uniform sampler2D diffuseMap;
+
         
 
+        uniform vec3 ambient;
+
+        
+      
+
+        void main()
+        {
+            vec3 diffuseColor = texture(diffuseMap, TexCoords).rgb;
+
+           
+            vec3 result = diffuseColor * ambient;
 
 
 
+            //result = CalcColor( norm, viewDir, diffuseColor);
+
+
+            FragColor = vec4(result, 1.0);
+        }
+
+      
+     
+        """
+        self.create_shader(vertex,fragment)
+       
+       
+
+       
+
+        
+        
 
 class DirectionalShader(Shader):
     def __init__(self):
@@ -355,17 +432,6 @@ class DirectionalShader(Shader):
        
 
        
-
-    def apply(self):
-        light = Render.get_light(0)
-
-        self.set_vector3f("viewPos",light.camera)
-        self.set_vector3f("directional.direction", light.direction)
-        self.set_vector3f("directional.ambient", light.ambient)
-        self.set_vector3f("directional.diffuse", light.diffuse)
-        self.set_vector3f("directional.specular", light.specular)
-
-        self.set_float("shininess", light.shininess)
             
 
 
@@ -416,10 +482,12 @@ class PointShader(Shader):
         in vec2 TexCoords;
         in vec3 Normal;
         in vec3 FragPos;
+        
         uniform sampler2D diffuseMap;
         uniform sampler2D specularMap;
-        uniform PointLight point;
         uniform float shininess;
+        
+        uniform PointLight point;
         uniform vec3 viewPos;
         
         vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir, vec3 diffuseColor, vec3 specularColor);
@@ -450,7 +518,7 @@ class PointShader(Shader):
             float distanceToPoint = length(lightDirection);
 
               // Suavizar a transição quando o fragmento estiver fora do alcance da luz
-            //float falloff = smoothstep(light.range, light.range * 1.2, distanceToPoint);
+            
             float falloff = smoothstep(light.range * 0.6, light.range, distanceToPoint);
 
 
@@ -512,21 +580,269 @@ class PointShader(Shader):
 
        
 
-    def apply(self):    
-        light = Render.get_light(0)
-
-        self.set_vector3f("viewPos",light.camera)
 
 
-        self.set_vector3f("point.position", light.position)
-        self.set_float("point.constant", light.constant)
-        self.set_float("point.linear", light.linear)
-        self.set_float("point.quadratic", light.quadratic)
-        self.set_vector3f("point.ambient", light.ambient)
-        self.set_vector3f("point.diffuse", light.diffuse)
-        self.set_vector3f("point.specular", light.specular)
-        self.set_float("point.range", light.range)
 
 
+
+
+class SpotShader(Shader):
+    def __init__(self):
+        super().__init__()
+        self.attributes=[Attribute.POSITION3D,Attribute.TEXCOORD0,Attribute.NORMAL] 
+
+        vertex="""#version 330 core
+
+        layout(location = 0) in vec3 aPos;
+        layout(location = 1) in vec2 aTexCoord;
+        layout(location = 2) in vec3 aNormal;
+
+        
+        uniform mat4 uProjection;
+        uniform mat4 uView;
+        uniform mat4 uModel;
+
+        out vec2 TexCoords;
+        out vec3 Normal;
+        out vec3 FragPos;
+        void main()
+        {
+            FragPos = vec3(uModel * vec4(aPos, 1.0));
+            TexCoords = aTexCoord;
+            Normal = mat3(transpose(inverse(uModel))) * aNormal;  
+            gl_Position =  uProjection * uView  *  vec4(FragPos, 1.0);
+        }
+        """
+
+        fragment="""#version 330 core
+        out vec4 FragColor;
+
+        struct SpotLight 
+        {
+            vec3 position;
+            vec3 direction;
+
+            float cutOff;
+            float outerCutOff;
+
+            float constant;
+            float linear;
+            float quadratic;
+
+            vec3 ambient;
+            vec3 diffuse;
+            vec3 specular;
+        };
+
+        in vec2 TexCoords;
+        in vec3 Normal;
+        in vec3 FragPos;
+        uniform sampler2D diffuseMap;
+        uniform sampler2D specularMap;
+        uniform float shininess;
+        
+        uniform SpotLight spot;
+        uniform vec3 viewPos;
+        
+        vec3 CalcSpotLight(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir, vec3 diffuseColor, vec3 specularColor);
+        vec3 CalcColor(SpotLight light, vec3 direction, vec3 normal, vec3 viewDir, vec3 diffuseColor, vec3 specularColor);
+
+        void main()
+        {
+            vec3 diffuseColor = texture(diffuseMap, TexCoords).rgb;
+            vec3 specularColor = texture(specularMap, TexCoords).rgb;
+            vec3 norm = normalize(Normal);
+            vec3 viewDir = normalize(viewPos - FragPos);
+
+            vec3 result = vec3(0.0);
+
+
+            result = CalcSpotLight(spot, norm, FragPos, viewDir, diffuseColor, specularColor);
+
+
+            FragColor = vec4(result, 1.0);
+        }
+
+    
+
+        vec3 CalcSpotLight(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir, vec3 diffuseColor, vec3 specularColor)
+        {
+            
+            vec3 lightDirection =  light.position - fragPos;
+            float distanceToPoint = length(lightDirection);
+            lightDirection = normalize(lightDirection);
+
+            float theta = dot(lightDirection, normalize(-light.direction));
+            //if (theta <= light.outerCutOff) return vec3(0.0); //??
 
             
+            vec3 color = CalcColor(light, lightDirection, normal, viewDir, diffuseColor, specularColor);
+            //if (color == vec3(0.0)) return vec3(0.0); //??
+
+
+
+            float attenuation =  light.constant + 
+                                 (light.linear * distanceToPoint) +
+                                 light.quadratic * (distanceToPoint * distanceToPoint) ;
+            
+             attenuation = max(attenuation, 0.0001); 
+
+             float epsilon = light.cutOff - light.outerCutOff;
+             //float intensity = clamp((theta - light.outerCutOff) / epsilon, 0.0, 1.0);
+
+            float minIntensity = 0.4;  // Intensidade mínima da luz??
+            float intensity = clamp((theta - light.outerCutOff) / (light.cutOff - light.outerCutOff), minIntensity, 1.0);
+
+   
+            
+
+            return (color / attenuation) * intensity;
+        }
+
+         vec3 CalcColor(SpotLight light,vec3 direction, vec3 normal, vec3 viewDir, vec3 diffuseColor, vec3 specularColor)
+        {
+            vec3 lightDir = normalize(direction);
+            vec3 diffuse = vec3(0.0);
+            vec3 specular = vec3(0.0);
+            vec3 ambient = light.ambient * diffuseColor;
+
+            float diff = dot(normal, lightDir);
+            if (diff > 0.0)   
+            {
+
+                // Diffuse shading
+                diff = max(diff, 0.0);
+
+                // Specular shading
+                vec3 halfwayDir = normalize(lightDir + viewDir);
+                float spec = pow(max(dot(normal, halfwayDir), 0.0), shininess);
+                if (spec > 0.0)
+                {
+                    specular = light.specular * spec * specularColor;
+                }
+
+                // Combine results
+                diffuse = light.diffuse * diff * diffuseColor;
+                
+            }
+
+            return (ambient + diffuse + specular);
+        }
+
+        """
+        self.create_shader(vertex,fragment)
+       
+
+
+        
+
+
+
+class LightData:
+    def __init__(self):
+        self.camera = glm.vec3(0,0,0)
+        self.type   = LightType.NONE
+        self.enable = True
+        self.shader = None
+    
+    def update(self):
+        pass
+
+class AmbientLightData(LightData):
+    def __init__(self):
+        super().__init__()
+        self.ambient=glm.vec3(0.2,0.2,0.2)
+        self.type = LightType.AMBIENT
+        self.enable = True
+        self.shader = AmbientShader()
+        self.update()
+    def update(self):
+        self.shader.set_vector3f("ambient", self.ambient)
+
+
+
+class DirectionalLightData(LightData):
+    def __init__(self):
+        super().__init__()
+        self.shader = DirectionalShader()
+        self.direction=glm.vec3(1,1,1)
+        self.type = LightType.DIRECTIONAL
+        self.shininess = 32.0
+        self.ambient=glm.vec3(0.2,0.2,0.2)
+        self.diffuse=glm.vec3(0.2,0.2,0.2)
+        self.specular=glm.vec3(1.0,1.0,1.0)
+        self.update()
+
+    def update(self):
+        self.shader.set_vector3f("viewPos",self.camera)
+        self.shader.set_vector3f("directional.direction", self.direction)
+        self.shader.set_vector3f("directional.ambient", self.ambient)
+        self.shader.set_vector3f("directional.diffuse", self.diffuse)
+        self.shader.set_vector3f("directional.specular", self.specular)
+        self.shader.set_float("shininess", self.shininess)
+
+
+class PointLightData(LightData):
+    def __init__(self):
+        super().__init__()
+        self.shader = PointShader()
+        self.position =glm.vec3(0,0,0)
+        self.ambient =glm.vec3(0.2,0.2,0.2)
+        self.diffuse =glm.vec3(0.8,0.8,0.8)
+        self.specular=glm.vec3(1.0,1.0,1.0)
+        
+        self.type = LightType.POINT
+        self.shininess = 32.0
+        self.constant = 1.0
+        self.linear = 0.09
+        self.quadratic = 0.032
+        self.range = 100.0
+        self.update()
+
+    def update(self):
+        self.shader.set_vector3f("viewPos",self.camera)
+        self.shader.set_vector3f("point.position", self.position)
+        self.shader.set_vector3f("point.ambient", self.ambient)
+        self.shader.set_vector3f("point.diffuse", self.diffuse)
+        self.shader.set_vector3f("point.specular", self.specular)
+
+        self.shader.set_float("point.shininess", self.shininess)
+        self.shader.set_float("point.constant", self.constant)
+        self.shader.set_float("point.linear", self.linear)
+        self.shader.set_float("point.quadratic", self.quadratic)
+        self.shader.set_float("point.range", self.range)
+
+
+
+class SpotLightData(LightData):
+    def __init__(self):
+        super().__init__()
+        self.shader = SpotShader()
+        self.position=glm.vec3(0,0,0)
+        self.direction=glm.vec3(0,0,0)
+        self.ambient=glm.vec3(0.2,0.2,0.2)
+        self.diffuse=glm.vec3(0.8,0.8,0.8)
+        self.specular=glm.vec3(1.0,1.0,1.0)
+        self.cutOff = math.cos(math.radians(12.5))
+        self.outerCutOff= math.cos(math.radians(17.5))
+        self.type = LightType.SPOT
+        self.shininess = 32.0
+        self.constant = 1.0
+        self.linear = 0.009
+        self.quadratic = 0.032  
+        self.update() 
+
+    def update(self):
+        self.shader.set_vector3f("viewPos",self.camera)
+        self.shader.set_vector3f("spot.position", self.position)
+        self.shader.set_vector3f("spot.direction", self.direction)
+        self.shader.set_vector3f("spot.ambient", self.ambient)
+        self.shader.set_vector3f("spot.diffuse", self.diffuse)
+        self.shader.set_vector3f("spot.specular", self.specular)
+        self.shader.set_float("spot.shininess", self.shininess)
+        self.shader.set_float("spot.constant", self.constant)
+        self.shader.set_float("spot.linear", self.linear)
+        self.shader.set_float("spot.quadratic", self.quadratic)
+        self.shader.set_float("spot.cutOff", self.cutOff)
+        self.shader.set_float("spot.outerCutOff", self.outerCutOff)
+

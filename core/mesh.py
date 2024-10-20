@@ -663,3 +663,11 @@ class Mesh:
             v = glm.vec3(v.x * x, v.y * y, v.z * z)
             self.set_position(i, v.x, v.y, v.z)
         self.calculate_bounding_box()
+    
+    def rotate(self, pitch, yaw, roll):
+        quat_yaw = glm.angleAxis(math.radians(yaw), glm.vec3(0.0, 1.0, 0.0))    # Rotação ao redor do eixo Y
+        quat_pitch = glm.angleAxis(math.radians(pitch), glm.vec3(1.0, 0.0, 0.0)) # Rotação ao redor do eixo X
+        quat_roll = glm.angleAxis(math.radians(roll), glm.vec3(0.0, 0.0, 1.0))   # Rotação ao redor do eixo Z
+        combined_rotation = quat_yaw * quat_pitch * quat_roll
+        self.transform(combined_rotation)
+            

@@ -4,6 +4,7 @@ import math
 from core.render import *
 from core.utils import BoundingBox, Plane3D, Ray3D, Frustum
 from core.builder import *
+from core.material import *
 
 dtor = math.pi / 180.0  # Graus para radianos
 rtod = 180.0 / math.pi  # Radianos para graus
@@ -186,6 +187,12 @@ class Entity:
                 self.world_tform = self.get_local_tform()
             self.invalid &= ~self.INVALID_WORLDTFORM
         return self.world_tform
+    
+    def get_front(self):
+        return self.get_world_rotation() * glm.vec3(0.0, 0.0, -1.0)
+    
+    def get_right(self):
+        return self.get_world_rotation() * glm.vec3(1.0, 0.0, 0.0)
 
     # Invalida transformações
     def invalidate_local(self):
@@ -442,7 +449,33 @@ class Model (Entity):
 
             material = self.materials[material_index]
             Render.render_mesh(mesh, material)
-            
+
+    def render_shader(self,shader,light,useMaterials=True):
+
+        if self.numMaterials == 0:
+            print("Model has no materials")
+            return
+
+        Render.set_shader(shader)
+        shader.apply()
+        shader.set_matrix4fv("uModel", glm.value_ptr(self.get_world_tform().matrix))
+        shader.set_matrix4fv("uView", glm.value_ptr(Render.matrix[VIEW_MATRIX]))
+        shader.set_matrix4fv("uProjection", glm.value_ptr(Render.matrix[PROJECTION_MATRIX]))
+        light.update()
+
+        for mesh in self.meshes:
+            box = mesh.box.transform(self.get_world_tform().matrix)
+            if not Render.is_box_in_frustum(box):
+                continue
+            material_index = mesh.material
+            if material_index >= self.numMaterials:
+                print("Invalid material index")
+                return
+            if useMaterials:
+                material = self.materials[material_index]
+                Render.render_mesh(mesh, material)            
+            else:
+                Render.render_mesh_no_material(mesh)
 
     def debug(self,batch):
         for mesh in self.meshes:
@@ -560,7 +593,39 @@ class Scene:
     def __init__(self):
         self.nodes = []
         self.mainCamera = None
+        self.lights = []
 
+
+    def create_ambient_light(self,color):
+        light = AmbientLightData()
+        light.ambient = color
+        self.lights.append(light)
+        return light
+
+    def create_directional_light(self, color, direction):
+        light = DirectionalLightData()
+        light.specular = color
+        light.direction = direction
+        self.lights.append(light)
+        return light
+
+    def create_point_light(self, color, position):
+        light = PointLightData()
+        light.specular = color
+        light.position = position
+        self.lights.append(light)
+        return light
+
+    def create_spot_light(self, color, position, direction):
+        light = SpotLightData()
+        light.color = color
+        light.position = position
+        light.direction = direction
+        self.lights.append(light)
+        return light
+
+    def get_light(self, index):
+        return self.lights[index]
 
     
     def set_camera(self, camera):
@@ -590,7 +655,36 @@ class Scene:
                 box = node.get_bounding_box()
                 if Render.is_box_in_frustum(box):
                     node.render()
-        
+
+    def render_all_with(self,shader,light,material):
+        for node in self.nodes:
+            if node.visible:
+                box = node.get_bounding_box()
+                if Render.is_box_in_frustum(box):
+                    node.render_shader(shader,light,material)
+
+    def render_forward(self):
+        Render.set_matrix(VIEW_MATRIX, self.mainCamera.get_view_matrix())
+        Render.set_matrix(PROJECTION_MATRIX, self.mainCamera.get_projection_matrix())
+        light = self.get_light(0)
+        self.render_all_with(light.shader,light,True)
+        Render.set_blend(True)
+        Render.set_blend_mode(BlendMode.One)
+        glDepthMask(False)
+        glDepthFunc(GL_EQUAL)
+
+        for i in range(1,len(self.lights)):
+            light = self.get_light(i)
+            if not light.enable:
+                continue
+            light.camera = self.mainCamera.get_world_position()
+            self.render_all_with(light.shader,light,True)
+
+        glDepthFunc(GL_LESS)
+        glDepthMask(True)
+        Render.set_blend_mode(BlendMode.NONE)
+        Render.set_blend(False)
+
 
     def unproject(self,x,y):
         return Ray3D.create_from_2d(x, y, Render.width, Render.height, self.mainCamera.get_view_matrix(), self.mainCamera.get_projection_matrix())
