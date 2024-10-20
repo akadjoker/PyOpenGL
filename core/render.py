@@ -42,6 +42,12 @@ class FaceMode(Enum):
     CCW= 1
 
 
+class LightType(Enum):
+    NONE = 0
+    DIRECTIONAL = 1
+    POINT = 2
+    SPOT = 3
+
 PROJECTION_MATRIX = 0x0000
 MODEL_MATRIX      = 0x0001
 VIEW_MATRIX       = 0x0002
@@ -58,11 +64,45 @@ POINTS    = 6
 class LightData:
     def __init__(self):
         self.camera=glm.vec3(0,0,0)
-        self.position=glm.vec3(1.2, 2.0, 2.0)
-        self.color=glm.vec3(1,0.5,0.31)
-        self.object_color=glm.vec3(1,1,1)
-        self.ambient_strength=0.1
-        self.specular_strength=0.5
+        self.ambient=glm.vec3(0.2,0.2,0.2)
+        self.diffuse=glm.vec3(0.8,0.8,0.8)
+        self.specular=glm.vec3(1.0,1.0,1.0)
+        self.type = LightType.NONE
+        self.enable = True
+
+class DirectionalLightData(LightData):
+    def __init__(self):
+        super().__init__()
+        self.direction=glm.vec3(1,1,1)
+        self.type = LightType.DIRECTIONAL
+        self.shininess = 32.0
+        self.ambient=glm.vec3(0.2,0.2,0.2)
+        self.diffuse=glm.vec3(0.8,0.8,0.8)
+        self.specular=glm.vec3(1.0,1.0,1.0)
+
+
+class PointLightData(LightData):
+    def __init__(self):
+        super().__init__()
+        self.position=glm.vec3(0,0,0)
+        self.type = LightType.POINT
+        self.constant = 1.0
+        self.linear = 0.09
+        self.quadratic = 0.032
+        self.range = 100.0
+                    
+
+
+
+class SpotLightData(LightData):
+    def __init__(self):
+        super().__init__()
+        self.position=glm.vec3(0,0,0)
+        self.direction=glm.vec3(0,0,0)
+        self.cutOff=glm.vec3(0,0,0)
+        self.outerCutOff=glm.vec3(0,0,0)
+        self.type = LightType.SPOT
+
 
 class Render:
     program = -1
@@ -130,7 +170,13 @@ class Render:
         Render.cursor_beam = glfw.create_standard_cursor(glfw.IBEAM_CURSOR)
         Render.cursor_cross = glfw.create_standard_cursor(glfw.CROSSHAIR_CURSOR)
         Render.current_cursor = None
-        Render.lights.append(LightData())
+        
+
+    
+
+    @staticmethod
+    def add_light(light):
+        Render.lights.append(light)
 
     @staticmethod
     def get_light(index):
@@ -166,14 +212,13 @@ class Render:
 
         
     @staticmethod
-    def load_texture(file_path):
-        name = file_path.split("/")[-1].split(".")[0]
-        if name in Render.texture_assets:
-            print(f"Texture {name} already loaded")
-            return Render.texture_assets[name]
+    def load_texture(file_path,id):
+        if id in Render.texture_assets:
+            print(f"Texture {id} already loaded")
+            return Render.texture_assets[id]
         texture = Texture2D()
         texture.load(file_path)
-        Render.texture_assets[name] = texture
+        Render.texture_assets[id] = texture
         return texture
 
     @staticmethod
@@ -200,8 +245,9 @@ class Render:
 
     @staticmethod
     def set_texture(texture, layer):
-        if Render.layers[layer] == texture:
-            return
+        #if Render.layers[layer] == texture:
+        #    return
+        
         glActiveTexture(GL_TEXTURE0 + layer)
         glBindTexture(GL_TEXTURE_2D, texture)
         Render.textures += 1

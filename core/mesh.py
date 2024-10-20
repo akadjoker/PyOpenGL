@@ -27,7 +27,6 @@ def get_angle_weight(v1, v2, v3):
 
 class Mesh:
     def __init__(self,material=0):
-
         self.material = material
         self.attributes=[]
         self.mode =GL_TRIANGLES

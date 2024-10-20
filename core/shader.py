@@ -22,6 +22,9 @@ class Shader:
 
     def use(self):
         glUseProgram(self.program)
+    
+    def apply(self):
+        pass
 
 
     def create_shader(self, vertString, fragString):
@@ -33,7 +36,7 @@ class Shader:
         result = glGetProgramiv(self.program, GL_LINK_STATUS)
         if not result:
             log = glGetProgramInfoLog(self.program)
-            print(f"Erro na compilação do shader: {log.decode()}")
+            print(f"Fail to link shader: {log.decode()}")
             return
         glDeleteShader(vert)
         glDeleteShader(frag)
@@ -49,7 +52,7 @@ class Shader:
         result = glGetProgramiv(self.program, GL_LINK_STATUS) 
         if not result:
             log = glGetProgramInfoLog(self.program)
-            print(f"Erro na compilação do shader: {log.decode()}")
+            print(f"Fail to link shader: {log.decode()}")
             return
 
         glDeleteShader(vert)
@@ -61,26 +64,28 @@ class Shader:
 
 
     def loadShaderFromString(self, source, shaderType):
+        string_type = shaderType == GL_VERTEX_SHADER and "vertex" or "fragment"
         shader = glCreateShader(shaderType)
         glShaderSource(shader, source)
         glCompileShader(shader)
         result = glGetShaderiv(shader, GL_COMPILE_STATUS)
         if not result:
             log = glGetShaderInfoLog(shader)
-            print(f"Erro na compilação do shader: {log.decode()}")
+            print(f"Fail to compile shader: {log.decode()} {string_type}")
             return None
         return shader
 
     def loadShaderFromFile(self, fileName, shaderType):
         with open(fileName, 'r') as file:
             source = file.read()
+        string_type = shaderType == GL_VERTEX_SHADER and "vertex" or "fragment"
         shader = glCreateShader(shaderType)
         glShaderSource(shader, source)
         glCompileShader(shader)
         result = glGetShaderiv(shader, GL_COMPILE_STATUS)
         if not result:
             log = glGetShaderInfoLog(shader)
-            print(f"Erro na compilação do shader: {log.decode()}")
+            print(f"Fail to compile shader: {log.decode()} {string_type}")
             return None
         return shader
 

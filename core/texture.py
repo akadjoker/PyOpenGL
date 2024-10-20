@@ -165,4 +165,4 @@ class Texture2D(Texture):
         glGenerateMipmap(GL_TEXTURE_2D)
 
         glBindTexture(GL_TEXTURE_2D, 0)
-        print(f"Texture  {file_path} {self.id} {self.format} {self.width}x{self.height} loaded" )                
+        print(f"Texture  {self.id} {self.format} {self.width}x{self.height} loaded" )                

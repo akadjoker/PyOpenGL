@@ -3,6 +3,7 @@ import math
 import numpy as np
 from .shader import Shader
 from .texture import Texture
+from .material import Material
 from .mesh import Mesh
 from .color import *
 from .core import *
@@ -462,20 +463,79 @@ def process_obj(data, material):
 
     return mesh
 
+def create_hill_plane_mesh(tile_size, tile_count, hill_height, hill_count, texture_repeat_count):
+    count_hills = hill_count
+    if count_hills[0] < 0.01:
+        count_hills[0] = 1.0
+    if count_hills[1] < 0.01:
+        count_hills[1] = 1.0
+
+    center = (
+        (tile_size[0] * tile_count[0]) * 0.5,
+        (tile_size[1] * tile_count[1]) * 0.5
+    )
+
+   
+    tx = (
+        texture_repeat_count[0] / tile_count[0],
+        texture_repeat_count[1] / tile_count[1]
+    )
+
+    # Incrementar o tile_count para incluir o ponto extra em cada direção
+    tile_count = (tile_count[0] + 1, tile_count[1] + 1)
+
+    mesh = Mesh()
+
+    sx = 0.0
+    tsx = 0.0
+    for x in range(tile_count[0]):
+        sy = 0.0
+        tsy = 0.0
+        for y in range(tile_count[1]):
+            vx = sx - center[0]
+            vy = 0.0
+            vz = sy - center[1]
+
+            if hill_height != 0.0:
+                vy = math.sin(vx * count_hills[0] * math.pi / center[0]) * \
+                     math.cos(vz * count_hills[1] * math.pi / center[1]) * hill_height
+
+            mesh.add_vertex(vx, vy, vz, tsx, 1.0 - tsy, 0, 1, 0)
+
+            sy += tile_size[1]
+            tsy += tx[1]
+
+        sx += tile_size[0]
+        tsx += tx[0]
+
+    for x in range(tile_count[0] - 1):
+        for y in range(tile_count[1] - 1):
+            current = x * tile_count[1] + y
+            mesh.add_triangle(current, current + 1, current + tile_count[1])
+            mesh.add_triangle(current + 1, current + 1 + tile_count[1], current + tile_count[1])
+
+    mesh.recalculate_normals()
+
+    mesh.calculate_bounding_box()
+
+    return mesh
+
 
 
 def create_terrain_mesh(model,texture_image_path, heightmap_image_path, stretch_size, max_height, max_vtx_block_size, debug_borders=False):
     
-    texture = Image.open(texture_image_path)
+    texture_image = Image.open(texture_image_path)
     heightmap = Image.open(heightmap_image_path).convert('L')  # Convert to grayscale for heightmap
 
-    if not texture or not heightmap:
+    if not texture_image or not heightmap:
         print("Texture or heightmap not found.")
         return None
 
+    #texture_image = texture_image.transpose(Image.FLIP_TOP_BOTTOM)  
+
     # Definir o tamanho da malha com base nas dimensões das imagens
     hmap_size = heightmap.size  # (width, height)
-    tmap_size = texture.size  # (width, height)
+    tmap_size = texture_image.size  # (width, height)
     th_rel = (tmap_size[0] / hmap_size[0], tmap_size[1] / hmap_size[1])
 
     max_height /= 255.0  # O valor de altura vai de 0 a 255
@@ -485,6 +545,7 @@ def create_terrain_mesh(model,texture_image_path, heightmap_image_path, stretch_
     processed_y = 0
 
     border_skip = 0 if debug_borders else 1
+    index =0
 
     while processed_y < hmap_size[1]:
         while processed_x < hmap_size[0]:
@@ -493,25 +554,26 @@ def create_terrain_mesh(model,texture_image_path, heightmap_image_path, stretch_
             block_size_height = min(max_vtx_block_size[1], hmap_size[1] - processed_y)
 
 
-            mesh = Mesh()  # Novo bloco de terreno
+            mesh = Mesh(index)  # Novo bloco de terreno
+            index += 1
+
+            bs = glm.vec2(1.0/block_size_width, 1.0/block_size_height)
+            tc = glm.vec2(0.0,0.5*bs.y)
 
             # Adicionar vértices ao bloco
             for y in range(block_size_height):
+                tc.x=0.5*bs.x
                 for x in range(block_size_width):
                     # Obter o valor de altura do mapa de alturas
                     height_value = heightmap.getpixel((x + processed_x, y + processed_y)) * max_height
 
-                    # Calcular as posições dos vértices e as coordenadas de textura
                     vx = (x + processed_x) * stretch_size[0]
                     vy = height_value
                     vz = (y + processed_y) * stretch_size[1]
-                    u = (x / block_size_width) * th_rel[0]
-                    v = (y / block_size_height) * th_rel[1]
 
-                    # Adicionar o vértice à sub-malha
-                    mesh.add_vertex(vx, vy, vz, u, v)
-
-            # Adicionar índices para formar os triângulos da sub-malha
+                    mesh.add_vertex(vx, vy, vz, tc.x,tc.y, 0,1,0)
+                    tc.x += bs.x
+                tc.y+=bs.y
             for y in range(block_size_height - 1):
                 for x in range(block_size_width - 1):
                     idx = (y * block_size_width) + x
@@ -519,29 +581,27 @@ def create_terrain_mesh(model,texture_image_path, heightmap_image_path, stretch_
                     mesh.add_triangle(idx + 1, idx + block_size_width, idx + block_size_width + 1)
 
             # Processar a textura para o bloco
-            block_texture = texture.crop((
+            block_texture = texture_image.crop((
                 int(processed_x * th_rel[0]),
                 int(processed_y * th_rel[1]),
                 int((processed_x + block_size_width) * th_rel[0]),
                 int((processed_y + block_size_height) * th_rel[1])
             ))
+            texture = Texture2D()
+            texture.load_from_image(block_texture)
+            model.add_material(Material(texture))
+
+
+            #block_texture.save(f"block_texture_{processed_x}_{processed_y}_{index}.png")
 
             
-
-            # Aqui podes salvar ou aplicar a textura no teu sistema
-            # Exemplo: block_texture.save(f"block_texture_{processed_x}_{processed_y}.png")
-
+            mesh.calculate_bounding_box()
+            mesh.recalculate_normals()
             model.add_mesh(mesh)
 
-            # Atualizar os índices do processamento
+            
             processed_x += max_vtx_block_size[0] - border_skip
 
         processed_x = 0
         processed_y += max_vtx_block_size[1] - border_skip
 
-    # Calcular os bounding boxes e normais para cada bloco de malha
-    for mesh in mesh_list:
-        mesh.calculate_bounding_box()
-        mesh.recalculate_normals()
-
-    return mesh_list  # Retornar a lista de sub-malhas (blocos)

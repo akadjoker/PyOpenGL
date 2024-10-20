@@ -3,6 +3,7 @@ import glm
 import math
 from core.render import *
 from core.utils import BoundingBox, Plane3D, Ray3D, Frustum
+from core.builder import *
 
 dtor = math.pi / 180.0  # Graus para radianos
 rtod = 180.0 / math.pi  # Radianos para graus
@@ -438,6 +439,7 @@ class Model (Entity):
             if material_index >= self.numMaterials:
                 print("Invalid material index")
                 return
+
             material = self.materials[material_index]
             Render.render_mesh(mesh, material)
             
@@ -573,6 +575,11 @@ class Scene:
         self.nodes.append(model)
         return model
     
+    def create_terrain_block(self,shader,texture_image_path, heightmap_image_path, stretch_size, max_height, max_vtx_block_size, debug_borders=False, name="Terrain"):
+        model = Model(shader,name)
+        create_terrain_mesh(model,texture_image_path, heightmap_image_path, stretch_size, max_height, max_vtx_block_size, debug_borders)
+        self.nodes.append(model)  
+        return model
 
 
     def render(self):
