@@ -49,6 +49,7 @@ proj_mat =  camera.get_projection_matrix()
 Render.set_matrix(VIEW_MATRIX, view_mat)
 Render.set_matrix(PROJECTION_MATRIX, camera.get_projection_matrix())
 
+
 Gui.init()
 
 chackValue= True
@@ -162,7 +163,7 @@ while core.run():
     selected_index, is_open, scroll_value = Gui.combobox(10, 10, 150, 25, items, selected_index, is_open, scroll_value)
     Gui.end()
 
-    Gui.render()
+    Gui.render(core.width , core.height)
 
     #Render.set_scissor_test(False)
 

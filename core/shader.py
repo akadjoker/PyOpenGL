@@ -1,10 +1,24 @@
 from OpenGL.GL import *
+from enum import Enum
+
+
+class Attribute(Enum):
+    POSITION3D = 0
+    POSITION2D = 1
+    TEXCOORD0 = 2
+    TEXCOORD1 = 3
+    COLOR3 = 10
+    COLOR4 = 11
+    NORMAL = 12
+    TANGENT = 13
+    BITANGENT = 14
 
 
 class Shader:
     def __init__(self):
         self.program = glCreateProgram()
         self.uniforms = {}
+        self.attributes=[]
 
     def use(self):
         glUseProgram(self.program)
@@ -91,34 +105,37 @@ class Shader:
         location = self.uniforms.get(name)
         if location is not None:
             glUniform1f(location, value)
-        else:
-            print(f"Uniform '{name}' not found.")
+        #else:
+        #    print(f"Uniform '{name}' not found.")
     
     def set_int(self, name, value):
         location = self.uniforms.get(name)
         if location is not None:
             glUniform1i(location, value)
-        else:
-            print(f"Uniform '{name}' not found.")
+        #else:
+        #    print(f"Uniform '{name}' not found.")
 
 
     def set_vector2f(self, name, value):
         location = self.uniforms.get(name)
         if location is not None:
             glUniform2f(location, value[0], value[1])
-        else:
-            print(f"Uniform '{name}' not found.")
+        #else:
+        #    print(f"Uniform '{name}' not found.")
     
     def set_vector3f(self, name, value):
         location = self.uniforms.get(name)
         if location is not None:
             glUniform3f(location, value[0], value[1], value[2])
-        else:
-            print(f"Uniform '{name}' not found.")
+        #else:
+        #    print(f"Uniform '{name}' not found.")
     
     def set_vector4f(self, name, value):
         location = self.uniforms.get(name)
         if location is not None:
             glUniform4f(location, value[0], value[1], value[2], value[3])
-        else:
-            print(f"Uniform '{name}' not found.")
+        #else:
+        #    print(f"Uniform '{name}' not found.")
+
+
+

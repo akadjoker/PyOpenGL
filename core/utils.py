@@ -3,9 +3,49 @@ import glfw
 import math
 
 
+class UtilMath:
+    @staticmethod
+    def clamp(x, min, max):
+        return min if x < min else max if x > max else x
+
+    @staticmethod
+    def lerp(a, b, t):
+        return a + (b - a) * t
+
+    @staticmethod
+    def smoothstep(x, min, max):
+        t = UtilMath.clamp((x - min) / (max - min), 0.0, 1.0)
+        return t * t * (3.0 - 2.0 * t)
 
 
 
+
+    @staticmethod
+    def ray_from_mouse(mouse_x, mouse_y, viewport_width, viewport_height, view_matrix, projection_matrix):
+        # Convertendo coordenadas de tela para NDC (Normalized Device Coordinates)
+        x = (2.0 * mouse_x) / viewport_width - 1.0
+        y = 1.0 - (2.0 * mouse_y) / viewport_height
+        
+        near_point = glm.vec4(x, y, -1.0, 1.0)
+        far_point = glm.vec4(x, y, 1.0, 1.0)
+        
+
+        inv_projection = glm.inverse(projection_matrix)
+        inv_view = glm.inverse(view_matrix)
+        
+        near_world = inv_view * inv_projection * near_point
+        far_world = inv_view * inv_projection * far_point
+        
+
+        if near_world.w != 0:
+            near_world /= near_world.w
+        if far_world.w != 0:
+            far_world /= far_world.w
+        
+
+        ray_direction = glm.normalize(glm.vec3(far_world - near_world))
+        
+        return ray_direction
 
 class Rectangle:
     def __init__(self, x, y, width, height):
@@ -54,6 +94,180 @@ class Plane3D:
         normal = glm.normalize(normal)
         d = -glm.dot(v0, v0)
         return Plane3D(normal, d)
+    
+
+
+class Frustum:
+    def __init__(self):
+        self.planes = [Plane3D(glm.vec3(0)) for _ in range(6)]  # 6 planos: Left, Right, Bottom, Top, Near, Far
+
+    def update(self, proj_view_matrix):
+        self.planes[0] = self.extract_plane(proj_view_matrix, 0, 3, -1)  # Left
+        self.planes[1] = self.extract_plane(proj_view_matrix, 0, 3, 1)   # Right
+        self.planes[2] = self.extract_plane(proj_view_matrix, 1, 3, -1)  # Bottom
+        self.planes[3] = self.extract_plane(proj_view_matrix, 1, 3, 1)   # Top
+        self.planes[4] = self.extract_plane(proj_view_matrix, 2, 3, -1)  # Near
+        self.planes[5] = self.extract_plane(proj_view_matrix, 2, 3, 1)   # Far
+
+        for plane in self.planes:
+            plane.normalize()
+
+    def get_left(self):
+        return self.planes[0]
+
+    def get_right(self):
+        return self.planes[1]
+
+    def get_bottom(self):
+        return self.planes[2]
+
+    def get_top(self):
+        return self.planes[3]
+
+    def get_near(self):
+        return self.planes[4]
+
+    def get_far(self):
+        return self.planes[5]
+
+    @staticmethod
+    def extract_plane(matrix, row, column, sign):
+        plane = Plane3D(glm.vec3(0))
+        
+        plane.normal.x = matrix[0][3] + sign * matrix[0][row]
+        plane.normal.y = matrix[1][3] + sign * matrix[1][row]
+        plane.normal.z = matrix[2][3] + sign * matrix[2][row]
+        plane.distance = matrix[3][3] + sign * matrix[3][row]
+
+        return plane
+
+    def is_point_in_frustum(self, point):
+        for plane in self.planes:
+            if glm.dot(plane.normal, point) + plane.distance < 0:
+                return False
+        return True
+
+    def is_sphere_in_frustum(self, center, radius):
+        for plane in self.planes:
+            distance = glm.dot(plane.normal, center) + plane.distance
+            if distance < -radius:
+                return False
+            elif distance < radius:
+                return True  # Intersecting
+        return True  # Fully inside
+
+    def is_box_in_frustum(self, min_point, max_point):
+        for plane in self.planes:
+            p = glm.vec3(
+                max_point.x if plane.normal.x >= 0 else min_point.x,
+                max_point.y if plane.normal.y >= 0 else min_point.y,
+                max_point.z if plane.normal.z >= 0 else min_point.z
+            )
+            n = glm.vec3(
+                min_point.x if plane.normal.x >= 0 else max_point.x,
+                min_point.y if plane.normal.y >= 0 else max_point.y,
+                min_point.z if plane.normal.z >= 0 else max_point.z
+            )
+            
+            if glm.dot(plane.normal, p) + plane.distance < 0:
+                return False
+            elif glm.dot(plane.normal, n) + plane.distance < 0:
+                return True  # Intersecting
+        return True  # Fully inside
+
+
+class Ray3D:
+    def __init__(self, origin, direction):
+        self.origin = origin
+        self.direction = direction
+    
+    def set(self, origin, direction):
+        self.origin = origin
+        self.direction = direction
+
+    def __str__(self):
+        return f"Ray3D(origin={self.origin}, direction={self.direction})"
+    
+    def intersects_min_max(self, minimum, maximum):
+        d = 0.0
+        max_value = float('inf')
+        
+        # Verifica o eixo X
+        if abs(self.direction.x) < 1e-7:
+            if self.origin.x < minimum.x or self.origin.x > maximum.x:
+                return False
+        else:
+            inv = 1.0 / self.direction.x
+            min_val = (minimum.x - self.origin.x) * inv
+            max_val = (maximum.x - self.origin.x) * inv
+            
+            if max_val == float('-inf'):
+                max_val = float('inf')
+            
+            if min_val > max_val:
+                min_val, max_val = max_val, min_val
+            
+            d = max(min_val, d)
+            max_value = min(max_val, max_value)
+            
+            if d > max_value:
+                return False
+        
+        # Verifica o eixo Y
+        if abs(self.direction.y) < 1e-7:
+            if self.origin.y < minimum.y or self.origin.y > maximum.y:
+                return False
+        else:
+            inv = 1.0 / self.direction.y
+            min_val = (minimum.y - self.origin.y) * inv
+            max_val = (maximum.y - self.origin.y) * inv
+            
+            if max_val == float('-inf'):
+                max_val = float('inf')
+            
+            if min_val > max_val:
+                min_val, max_val = max_val, min_val
+            
+            d = max(min_val, d)
+            max_value = min(max_val, max_value)
+            
+            if d > max_value:
+                return False
+        
+        # Verifica o eixo Z
+        if abs(self.direction.z) < 1e-7:
+            if self.origin.z < minimum.z or self.origin.z > maximum.z:
+                return False
+        else:
+            inv = 1.0 / self.direction.z
+            min_val = (minimum.z - self.origin.z) * inv
+            max_val = (maximum.z - self.origin.z) * inv
+            
+            if max_val == float('-inf'):
+                max_val = float('inf')
+            
+            if min_val > max_val:
+                min_val, max_val = max_val, min_val
+            
+            d = max(min_val, d)
+            max_value = min(max_val, max_value)
+            
+            if d > max_value:
+                return False
+        
+        return True
+
+    def intersects_box(self, box):
+        return self.intersects_min_max(box.min, box.max)
+    
+    @staticmethod
+    def create_from_2d(mouse_x, mouse_y, width, height,  view_matrix, projection_matrix):
+        screen_x = mouse_x
+        screen_y = height - mouse_y
+        start = glm.unProject(glm.vec3(screen_x, screen_y, 0.0),  view_matrix, projection_matrix, glm.vec4(0,0, width, height))
+        end   = glm.unProject(glm.vec3(screen_x, screen_y, 1.0),  view_matrix, projection_matrix, glm.vec4(0,0, width, height))
+        direction = glm.normalize(end - start)
+        return Ray3D(start, direction)
 
 
 
@@ -62,8 +276,36 @@ class BoundingBox:
         self.min = glm.vec3(float('inf'), float('inf'), float('inf'))
         self.max = glm.vec3(float('-inf'), float('-inf'), float('-inf'))
 
+    def get_center(self):
+        return (self.min + self.max) * 0.5
+    
+    def get_edges(self):
+        middle = self.get_center()
+        diag = glm.vec3(self.max.x - middle.x, self.max.y - middle.y, self.max.z - middle.z)
+        edges = []
+        edges.append( glm.vec3(middle.x + diag.x, middle.y + diag.y, middle.z + diag.z))
+        edges.append( glm.vec3(middle.x + diag.x, middle.y - diag.y, middle.z + diag.z))
+        edges.append( glm.vec3(middle.x + diag.x, middle.y + diag.y, middle.z - diag.z))
+        edges.append( glm.vec3(middle.x + diag.x, middle.y - diag.y, middle.z - diag.z))
+        edges.append( glm.vec3(middle.x - diag.x, middle.y + diag.y, middle.z + diag.z))
+        edges.append( glm.vec3(middle.x - diag.x, middle.y - diag.y, middle.z + diag.z))
+        edges.append( glm.vec3(middle.x - diag.x, middle.y + diag.y, middle.z - diag.z))
+        edges.append( glm.vec3(middle.x - diag.x, middle.y - diag.y, middle.z - diag.z))
+        return edges
+        
+    def transform(self, matrix):
+        box = BoundingBox()
+        corners = self.get_edges()
+        #box.clear(corners[0])
+        for c in corners:
+            point = matrix * c
+            box.add_point(point.x,point.y,point.z)
+        return box
 
-
+    def clear(self,point):
+        self.min = point
+        self.max = point
+        
     def reset(self):
         self.min = glm.vec3(float('inf'), float('inf'), float('inf'))
         self.max = glm.vec3(float('-inf'), float('-inf'), float('-inf'))
@@ -81,6 +323,23 @@ class BoundingBox:
             self.max.y = y
         if self.max.z < z:
             self.max.z = z
+
+    def add(self,box):
+        if box.min.x<self.min.x: 
+            self.min.x = box.min.x
+        if box.min.y<self.min.y: 
+            self.min.y = box.min.y
+        if box.min.z<self.min.z: 
+            self.min.z = box.min.z
+        if box.max.x>self.max.x: 
+            self.max.x = box.max.x
+        if box.max.y>self.max.y: 
+            self.max.y = box.max.y
+        if box.max.z>self.max.z: 
+            self.max.z = box.max.z
+    
+    def merge(self,box):
+        self.add(box)
 
 class Quad:
     def __init__(self, x, y, t, v):

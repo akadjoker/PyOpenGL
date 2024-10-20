@@ -5,7 +5,7 @@ from .core import *
 from .render import Render
 from .utils import Quad
 from .texture import Texture
-from .material import SolidMaterial,SpriteMaterial
+
 import math
 import ctypes
 
@@ -36,7 +36,9 @@ class Font:
         self.indices = []
         self.vertexCount = 0
         self.maxElemnts = maxVertex * 4 * 6
-        self.totalAlloc = math.floor((self.maxVertex * 4 * self.stride * 4) / 9)
+        self.totalAlloc =  len(self.vertices) // 4
+        
+        
         self.texture = None
         self.CharInfo=[]
         self.quads=[]
@@ -63,7 +65,7 @@ class Font:
         self.tv = 0
         self.flip_x = False
         self.flip_y = False
-        self.depth = 0.0
+        self.depth = 0.01
         self.size=20
         self.stretching_texel = False
 
@@ -77,12 +79,19 @@ class Font:
             self.indices.append(4 * k + 3)
             k += 1
 
-        self.material = SpriteMaterial()
+        self.shader = Render.get_shader("default")
         self.init()
    
     def set_clip(self, x, y, width, height):
         self.clip_enabled = True
         self.clip.set(x, y, width, height)
+        
+
+    def get_clip(self):
+        return self.clip
+    
+    def is_clip_enabled(self):
+        return self.clip_enabled
 
     def enable_clip(self,value):
         self.clip_enabled = value
@@ -119,6 +128,8 @@ class Font:
 
 
     def vertex3f(self, x, y, z):
+        if self.vertexCount >= self.totalAlloc:
+            self._flush()
         self.vertices[self.count]     = x
         self.vertices[self.count + 1] = y
         self.vertices[self.count + 2] = z
@@ -153,10 +164,11 @@ class Font:
 
         glBindVertexArray(self.vao)
         
-        Render.set_material(self.material)
+        Render.set_shader(self.shader)
         Render.set_texture(self.texture.id, 0)
-        self.material.shader.set_matrix4fv("uView", glm.value_ptr(Render.matrix[VIEW_MATRIX]))
-        self.material.shader.set_matrix4fv("uProjection", glm.value_ptr(Render.matrix[PROJECTION_MATRIX]))
+        self.shader.set_matrix4fv("uView", glm.value_ptr(Render.matrix[VIEW_MATRIX]))
+        self.shader.set_matrix4fv("uProjection", glm.value_ptr(Render.matrix[PROJECTION_MATRIX]))
+        self.shader.set_matrix4fv("uModel", glm.value_ptr(Render.matrix[MODEL_MATRIX]))
   
         glBindBuffer(GL_ARRAY_BUFFER, self.vbo)
         glBufferSubData(GL_ARRAY_BUFFER, 0, self.count * 4, np.array(self.vertices, dtype=np.float32))
@@ -228,6 +240,8 @@ class Font:
             if not self.texture or len(self.CharInfo) == 0:
                 return
 
+            if self.count > self.totalAlloc:
+                self._flush()
             
             width_tex  = self.texture.width
             height_tex = self.texture.height

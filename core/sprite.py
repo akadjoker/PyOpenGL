@@ -4,7 +4,7 @@ from OpenGL.GL import *
 from .core import *
 from .utils import Quad, rotate_point
 from .texture import Texture
-from .material import SpriteMaterial
+
 import math
 import ctypes
 
@@ -50,7 +50,7 @@ class SpriteBatch:
             self.indices.append(4 * k + 3)
             k += 1
 
-        self.material = SpriteMaterial()
+        self.shader = Render.get_shader("default")
         self.init()
 
     def init(self):
@@ -115,10 +115,11 @@ class SpriteBatch:
 
         glBindVertexArray(self.vao)
         
-        Render.set_material(self.material)
+        Render.set_shader(self.shader)
         Render.set_texture(self.defaultTexture.id, 0)
-        self.material.shader.set_matrix4fv("uView", glm.value_ptr(Render.matrix[VIEW_MATRIX]))
-        self.material.shader.set_matrix4fv("uProjection", glm.value_ptr(Render.matrix[PROJECTION_MATRIX]))
+        self.shader.set_matrix4fv("uView", glm.value_ptr(Render.matrix[VIEW_MATRIX]))
+        self.shader.set_matrix4fv("uProjection", glm.value_ptr(Render.matrix[PROJECTION_MATRIX]))
+        self.shader.set_matrix4fv("uModel", glm.value_ptr(Render.matrix[MODEL_MATRIX]))
   
         glBindBuffer(GL_ARRAY_BUFFER, self.vbo)
         glBufferSubData(GL_ARRAY_BUFFER, 0, self.count * 4, np.array(self.vertices, dtype=np.float32))

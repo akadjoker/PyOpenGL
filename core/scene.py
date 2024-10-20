@@ -1,7 +1,8 @@
 
 import glm
 import math
-
+from core.render import *
+from core.utils import BoundingBox, Plane3D, Ray3D, Frustum
 
 dtor = math.pi / 180.0  # Graus para radianos
 rtod = 180.0 / math.pi  # Radianos para graus
@@ -60,6 +61,17 @@ class Entity:
 
         self._parent = None
         self._children = []
+        self.visible = True
+        self.active = True
+
+    def render(self):
+        pass
+
+    def update(self):
+        pass
+
+    def animate(self,time):
+        pass
 
     # Métodos para definir transformações locais
     def set_local_position(self, v):
@@ -370,6 +382,72 @@ class Entity:
         return delta
     
 
+class Model (Entity):
+    def __init__(self,shader,name="Model"):
+        super().__init__()    
+        self.meshes = []
+        self.shader = shader
+        self.name = name
+        self.box = BoundingBox()
+        self.boxTransform = BoundingBox()
+        
+        self.materials=[]
+        self.numMaterials = 0
+    
+
+    def add_material(self, material):
+        self.materials.append(material)
+        self.numMaterials += 1
+        
+    def add_mesh(self, mesh):
+        if self.numMaterials == 0:
+            print("Model has no materials")
+            return
+        mesh.set_attributes(self.shader.attributes)
+        self.meshes.append(mesh)
+        self.box.add(mesh.box)
+
+    
+    def get_bounding_box(self):
+        return self.boxTransform
+    
+    def sort_by_material(self):
+        self.meshes.sort(key=lambda mesh: mesh.material)
+        
+
+    def update(self):
+        self.boxTransform = self.box.transform(self.get_world_tform().matrix)
+    
+    def render(self):
+
+        if self.numMaterials == 0:
+            print("Model has no materials")
+            return
+
+        Render.set_shader(self.shader)
+        self.shader.apply()
+        self.shader.set_matrix4fv("uModel", glm.value_ptr(self.get_world_tform().matrix))
+        self.shader.set_matrix4fv("uView", glm.value_ptr(Render.matrix[VIEW_MATRIX]))
+        self.shader.set_matrix4fv("uProjection", glm.value_ptr(Render.matrix[PROJECTION_MATRIX]))
+
+        for mesh in self.meshes:
+            box = mesh.box.transform(self.get_world_tform().matrix)
+            if not Render.is_box_in_frustum(box):
+                continue
+            material_index = mesh.material
+            if material_index >= self.numMaterials:
+                print("Invalid material index")
+                return
+            material = self.materials[material_index]
+            Render.render_mesh(mesh, material)
+            
+
+    def debug(self,batch):
+        for mesh in self.meshes:
+            box = mesh.get_bounding_box()
+            batch.draw_transform_bounding_box(box,GREEN,self.get_world_tform().matrix)
+            batch.draw_bounding_box(self.box,RED)
+
 
 class Camera(Entity):
     def __init__(self, fov=45.0, aspect_ratio=16/9, near_plane=0.1, far_plane=100.0):
@@ -399,6 +477,9 @@ class Camera(Entity):
 
     def get_projection_matrix(self):
         return self.projection_matrix
+    
+    def get_projection_view_matrix(self):
+        return self.get_projection_matrix() * self.get_view_matrix()
 
 
 class CameraFPS(Camera):
@@ -420,7 +501,7 @@ class CameraFPS(Camera):
     def strafe_left(self, delta):
         self.speed_x -= delta
 
-    def update(self):
+    def update(self,dt):
 
         self.y = self.get_local_y()
         self.speed_x *= 0.9
@@ -470,3 +551,65 @@ class Camera2D:
 
     def set_scale(self, scale_x, scale_y):
         self.scale = glm.vec2(scale_x, scale_y)
+
+
+
+class Scene:
+    def __init__(self):
+        self.nodes = []
+        self.mainCamera = None
+
+
+    
+    def set_camera(self, camera):
+        self.mainCamera = camera
+
+
+    def get_model(self, index):
+        return self.nodes[index]
+
+    def create_model(self,shader, name="Model"):
+        model = Model(shader,name)
+        self.nodes.append(model)
+        return model
+    
+
+
+    def render(self):
+        Render.set_matrix(VIEW_MATRIX, self.mainCamera.get_view_matrix())
+        Render.set_matrix(PROJECTION_MATRIX, self.mainCamera.get_projection_matrix())
+        for node in self.nodes:
+            if node.visible:
+                box = node.get_bounding_box()
+                if Render.is_box_in_frustum(box):
+                    node.render()
+        
+
+    def unproject(self,x,y):
+        return Ray3D.create_from_2d(x, y, Render.width, Render.height, self.mainCamera.get_view_matrix(), self.mainCamera.get_projection_matrix())
+    
+    def camera_ray(self, mouse_x, mouse_y):
+        x = (2.0 * mouse_x) /  Render.width - 1.0
+        y = 1.0 - (2.0 * mouse_y) / Render.height
+        ray_clip = glm.vec4(x, y, -1.0, 1.0)
+        ray_eye = glm.inverse(self.mainCamera.get_projection_matrix()) * ray_clip
+        ray_eye = glm.vec4(ray_eye.x, ray_eye.y, -1.0, 0.0)
+        
+        ray_world = glm.inverse(self.mainCamera.get_view_matrix()) * ray_eye
+        ray_direction = glm.normalize(glm.vec3(ray_world))
+
+        return Ray3D(self.mainCamera.local_pos, ray_direction)
+        
+    
+    
+    def update(self):
+        if self.mainCamera is not None:
+            self.mainCamera.update()
+            Render.frustum.update(self.mainCamera.get_projection_view_matrix())
+        for node in self.nodes:
+            node.update()
+
+    
+    def debug(self, batch):
+        for node in self.nodes:
+           node.debug(batch) 

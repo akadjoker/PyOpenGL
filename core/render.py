@@ -3,10 +3,11 @@ import glfw
 import glm
 from OpenGL.GL import *
 from .color import *
-from .utils import Rectangle
-from.texture import *
+from .utils import Rectangle,Ray3D,Frustum
+from .texture import *
 from .shader import Shader
-from .material import SolidMaterial
+
+
 
 
 
@@ -54,6 +55,14 @@ LINE_LOOP = 5
 POINTS    = 6
 
 
+class LightData:
+    def __init__(self):
+        self.camera=glm.vec3(0,0,0)
+        self.position=glm.vec3(1.2, 2.0, 2.0)
+        self.color=glm.vec3(1,0.5,0.31)
+        self.object_color=glm.vec3(1,1,1)
+        self.ambient_strength=0.1
+        self.specular_strength=0.5
 
 class Render:
     program = -1
@@ -70,22 +79,28 @@ class Render:
     scissor_test = False
     scissor_box = Rectangle(0, 0, 1, 1)
     triangles = 0
-    vertexes = 0
+    vertices = 0
     textures = 0
     programs = 0
-    view_matrix = None
-    projection_matrix = None
+    frustum = Frustum()
     clear_flag = GL_COLOR_BUFFER_BIT
     clear_color = BLACK
     layers = [0] * 6
     texture_assets = {}
-    shaders_assets = {}
-    use_transform = False
+
+
     stack = []
-    material2D = None
+    lights = []
+
     defaultTexture = None
     defaultFont = None
-
+    cursor_hand = None
+    cursor_arrow = None
+    cursor_beam = None
+    cursor_cross = None
+    current_cursor = None
+    window = None
+    shaders = {}
 
     @staticmethod
     def reset():
@@ -93,7 +108,7 @@ class Render:
         Render.textures = 0
         Render.triangles = 0
         Render.programs = 0
-        Render.vertexes = 0
+        Render.vertices = 0
         Render.layers = [0] * 6
 
             
@@ -103,18 +118,51 @@ class Render:
         Render.textures = 0
         Render.triangles = 0
         Render.programs = 0
-        Render.vertexes = 0
+        Render.vertices = 0
         Render.layers = [0] * 6
         Render.matrix.append(glm.mat4(1.0))
         Render.matrix.append(glm.mat4(1.0))
         Render.matrix.append(glm.mat4(1.0))
         Render.defaultTexture = Texture2D()
         Render.defaultTexture.create(1, 1, ColorFormat.RGBA, [255, 255, 255, 255])
-        #Render.defaultFont = Font(1024)
-        #data = base64.b64decode(data.)
+        Render.cursor_hand= glfw.create_standard_cursor(glfw.POINTING_HAND_CURSOR)
+        Render.cursor_arrow = glfw.create_standard_cursor(glfw.ARROW_CURSOR)
+        Render.cursor_beam = glfw.create_standard_cursor(glfw.IBEAM_CURSOR)
+        Render.cursor_cross = glfw.create_standard_cursor(glfw.CROSSHAIR_CURSOR)
+        Render.current_cursor = None
+        Render.lights.append(LightData())
 
+    @staticmethod
+    def get_light(index):
+        return Render.lights[index]
+    
+    @staticmethod
+    def get_shader(name):
+        material = Render.shaders.get(name)
+        if material == None:
+            print(f"Shader {name} not found")
+            exit(1)
+        return material
+    
 
+    @staticmethod
+    def set_cursor(cursor):
+        if Render.current_cursor == cursor:
+            return
+        if cursor == None:
+            glfw.set_cursor(Render.window, Render.cursor_arrow)
+            return 
         
+        
+        Render.current_cursor = cursor
+        if cursor == "hand":
+            glfw.set_cursor(Render.window, Render.cursor_hand)
+        elif cursor == "beam":
+            glfw.set_cursor(Render.window, Render.cursor_beam)
+        elif cursor == "cross":
+            glfw.set_cursor(Render.window, Render.cursor_cross)
+        else:
+            glfw.set_cursor(Render.window, cursor)
 
         
     @staticmethod
@@ -129,23 +177,15 @@ class Render:
         return texture
 
     @staticmethod
-    def load_shader(vert_name, frag_name, name):
-        if name in Render.shaders_assets:
-            print(f"Shader {name} already loaded")
-            return Render.shaders_assets[name]
+    def load_shader(vert_name, frag_name):
         shader = Shader()
         shader.load_shader(vert_name, frag_name)
-        Render.shaders_assets[name] = shader
         return shader
 
     @staticmethod
-    def create_shader(vert_string, frag_string, name):
-        if name in Render.shaders_assets:
-            print(f"Shader {name} already loaded")
-            return Render.shaders_assets[name]
+    def create_shader(vert_string, frag_string):
         shader = Shader()
         shader.create_shader(vert_string, frag_string)
-        Render.shaders_assets[name] = shader
         return shader
 
     @staticmethod
@@ -182,23 +222,23 @@ class Render:
     @staticmethod
     def set_material(material):
         Render.material = material
-        Render.set_program(material.shader.program)
-        Render.material.apply(Render)
-        for layer in range(len(material.textures)):
-            Render.set_texture(material.textures[layer].id, layer)
+        Render.material.apply()
+
+
+
+    
 
     @staticmethod
-    def render_mesh(mesh):
+    def render_mesh(mesh, material):
         if mesh.tris == 0 or mesh.vrtx == 0:
             return
-        Render.set_material(mesh.material)
-        Render.material.shader.set_matrix4fv("uModel", glm.value_ptr(Render.matrix[MODEL_MATRIX]))
-        Render.material.shader.set_matrix4fv("uView", glm.value_ptr(Render.matrix[VIEW_MATRIX]))
-        Render.material.shader.set_matrix4fv("uProjection", glm.value_ptr(Render.matrix[PROJECTION_MATRIX]))
+        Render.set_material(material)
         glBindVertexArray(mesh.vao)
         glDrawElements(mesh.mode, mesh.tris, GL_UNSIGNED_INT, None)
         Render.triangles += mesh.tris // 3
-        Render.vertexes += mesh.vrtx
+        Render.vertices += mesh.vrtx
+
+
 
     @staticmethod
     def set_blend(enable):
@@ -242,10 +282,6 @@ class Render:
 
     @staticmethod
     def set_clear_color(r, g, b):
-        if (Render.clear_color.data[0] == r and
-            Render.clear_color.data[1] == g and
-            Render.clear_color.data[2] == b):
-            return
         Render.clear_color.data[0] = r
         Render.clear_color.data[1] = g
         Render.clear_color.data[2] = b
@@ -276,13 +312,14 @@ class Render:
 
     @staticmethod
     def set_size(width, height):
-        if Render.width == width and Render.height == height:
-            return
         Render.width = width
         Render.height = height
 
     @staticmethod
     def set_viewport(x, y, width, height):
+        Render.width  = width
+        Render.height = height
+
         if (Render.view_port.x == x and Render.view_port.y == y and
             Render.view_port.width == width and Render.view_port.height == height):
             return
@@ -290,9 +327,27 @@ class Render:
         Render.view_port.y = y
         Render.view_port.width = width
         Render.view_port.height = height
-        Render.width = width
-        Render.height = height
         glViewport(x, y, width, height)
+
+
+    @staticmethod
+    def is_point_in_frustum(x, y, z):
+        return Render.frustum.is_point_in_frustum(x, y, z)
+    
+
+    @staticmethod
+    def is_min_max_in_frustum(min_point, max_point):
+        return Render.frustum.is_box_in_frustum(min_point, max_point)
+    
+
+    @staticmethod
+    def is_box_in_frustum(box):
+        return Render.frustum.is_box_in_frustum(box.min, box.max)
+    
+
+    @staticmethod
+    def is_sphere_in_frustum(center, radius):
+        return Render.frustum.is_sphere_in_frustum(center, radius)
     
     @staticmethod
     def set_scissor(x, y, width, height):
@@ -331,13 +386,14 @@ class Render:
     @staticmethod
     def set_shader(shader):
         Render.set_program(shader.program)
+        
 
     @staticmethod
     def clear():
         glClear(Render.clear_flag)
 
 
-
+    
 
     @staticmethod
     def push_matrix():

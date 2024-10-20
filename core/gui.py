@@ -7,7 +7,7 @@ from core.sprite import SpriteBatch
 from core.color import Color
 from core.utils import Rectangle,point_in_rect, point_in_circle
 from core.render import Render
-
+import time
 
 class Theme:
     def __init__(self):
@@ -36,21 +36,7 @@ class Theme:
         self.fontOverSize = 18
         self.fontSize = 14
 
-class Window:
-    def __init__(self):
-        self.x = 0
-        self.y = 0
-        self.enable = False
-        self.dragging = False
-        self.focus = False
-        self.visible = True
-        self.id = 0
-        self.start_x = 0
-        self.start_y = 0
-        self.width = 0
-        self.height = 0
-        self.dragX = 0
-        self.dragY = 0
+
 
 
 
@@ -69,13 +55,19 @@ class Gui:
         HEIGHT=0
         isBegin = False
         visible = True
+        isDragging = -1
         hasFocus = False
         mouse_last_x = 0
         mouse_last_y = 0
         save_viewport = None
         theme = Theme()
-        window = Window()
-        
+        windows = {}
+        window = None
+        state = 0
+
+        @staticmethod
+        def has_focus():
+            return Gui.hasFocus
     
         @staticmethod
         def init(maxBatch=1024):
@@ -86,170 +78,91 @@ class Gui:
      
         
         @staticmethod
-        def render():
+        def render(width=0, height=0):
+            
+            Render.set_matrix(MODEL_MATRIX, glm.mat4(1.0))
+            Render.set_matrix(VIEW_MATRIX, glm.mat4(1.0))
+            view = glm.ortho(0.0, width , height, 0.0, -1.0, 1.0)
+            Render.set_matrix(PROJECTION_MATRIX, view)
             Gui.fill.render()
             Gui.sprites.render()
             Gui.line.render()
             Gui.font.render()
             Gui.ID = 0
+            
+            
 
 
         @staticmethod
-        def begin(x=0, y=0, w=0, h=0, options=None):
+        def _can_process():
+            return Gui.isBegin and Gui.isDragging == -1
+        
+
+        @staticmethod
+        def is_window_visible(ID):
+            if ID in Gui.windows:
+                return Gui.windows[ID]['visible']
+            return False
+        
+
+        @staticmethod
+        def begin(ID, x, y, w, h, options=None , content_height=None, scroll_value=0):
             if options is None:
                 options = {}
-
-
             Gui.isBegin = True
-            Gui.ID += 1
+
+
+            if ID not in Gui.windows:
+                Gui.windows[ID] = {
+                'x': x,
+                'y': y,
+                'width': w,
+                'height': h,
+                'dragging': False,
+                'dragX': 0,
+                'dragY': 0,
+                'visible': True,
+                'id': ID
+            }
+            window = Gui.windows[ID]
+            Gui.window = window
             Gui.fill.set_color(WHITE)
             Gui.line.set_color(WHITE)
             Gui.sprites.set_color(WHITE)
             Gui.font.set_color(WHITE)
             Gui.mouse_last_x = Input.get_mouse_x()
             Gui.mouse_last_y = Input.get_mouse_y()
-            Gui.window.id = Gui.ID -1
-
+            
+            
             dragging = options.get('dragging', False)
             bar = options.get('bar', False)
             background = options.get('background', True) 
             title = options.get('title', False)
             barHeight = 20
-            if not Gui.window.enable:
-                Gui.window.x = x
-                Gui.window.y = y
-                Gui.window.width = w
-                Gui.window.height = h
-                Gui.window.enable = True
-            X = Gui.window.x
-            Y = Gui.window.y
-            WIDTH = Gui.window.width
-            HEIGHT = Gui.window.height
-         
-
-            Gui.save_viewport = Render.get_scissor_box()
-            Gui.fill.set_clip(X, Y-barHeight, WIDTH, HEIGHT)
-            Gui.font.enable_clip(False)
-
-            OnBar =  point_in_rect(Input.get_mouse_x(), Input.get_mouse_y(), X, Y-barHeight, WIDTH, barHeight-4)
-            OnTerminal = point_in_rect(Input.get_mouse_x(), Input.get_mouse_y(), X+WIDTH-25, Y-barHeight+4, 20, barHeight-8)
-            Gui.hasFocus = point_in_rect(Input.get_mouse_x(), Input.get_mouse_y(), X, Y, WIDTH, HEIGHT) or OnBar or OnTerminal or Gui.window.dragging
-           
-     
-            if title:
-                Gui.font.set_color(WHITE)
-                Gui.font.set_size(Gui.theme.fontSize)
-                Gui.font.set_allign(TextAlign.Left)
-                offY = Y - (barHeight ) +  ( (Gui.font.maxHeight / Gui.theme.fontSize) / 2) 
-                Gui.font.write(X + 5, offY ,title)
-            if OnTerminal and Input.mouse_pressed(0):
-                Gui.window.visible = not Gui.window.visible
-           
-            if background and Gui.visible:
-                Gui.fill.set_color(Gui.theme.windowColor)
-                Gui.fill.rectangle(X, Y, WIDTH, HEIGHT)
-
-
-            if bar:
-                if OnBar:
-                    Gui.fill.set_color(Gui.theme.windowBarColor)
-                else :
-                    Gui.fill.set_color(Gui.theme.windowBarColorOff)
-                Gui.fill.rectangle(X, Y-barHeight, WIDTH, barHeight)
-                onColor =GREEN
-                ofColor =RED
-                if OnTerminal:
-                    onColor.fade(1)
-                    ofColor.fade(1)
-                else:
-                    onColor.fade(0.8)
-                    ofColor.fade(0.8)
-                if Gui.visible:
-                     Gui.fill.set_color(onColor)
-                     Gui.fill.rectangle( X + WIDTH-20, Y-(barHeight *0.5)-5, 10, 10)
-                else:
-                     Gui.fill.set_color(ofColor)
-                     Gui.fill.rectangle(  X + WIDTH-20, Y-(barHeight *0.5)-5, 10, 10)
-                     Gui.hasFocus = False
-                
-            Gui.line.set_clip(X, Y, WIDTH, HEIGHT-barHeight)
-            Gui.fill.set_clip(X, Y, WIDTH, HEIGHT-barHeight)
-            Gui.font.set_clip(X, Y, WIDTH, HEIGHT-barHeight)
-
-
-
-            if dragging:
-                if (OnBar or  Gui.window.dragging) and Input.mouse_down(0):
-                    if not Gui.window.dragging:
-                        Gui.window.dragging = True
-                        Gui.window.dragX = Input.get_mouse_x() - Gui.window.x
-                        Gui.window.dragY = Input.get_mouse_y() - Gui.window.y
-                    Gui.window.x = Input.get_mouse_x() - Gui.window.dragX
-                    Gui.window.y = Input.get_mouse_y() - Gui.window.dragY
-
-                if Gui.window.dragging and Input.mouse_released(0):
-                    Gui.window.dragging = False
-            
-            
-
     
-            # Gui.line.set_color(RED)
-            # Gui.line.rectangle( X, Y-barHeight, WIDTH, barHeight-4)
-            # Gui.line.rectangle(  X+WIDTH-25, Y-barHeight+4, 20, barHeight-8)
-            # Gui.line.rectangle(  X, Y, WIDTH, HEIGHT)
-
-            Gui.X = Gui.window.x
-            Gui.Y = Gui.window.y 
-            Gui.WIDTH = Gui.window.width
-            Gui.HEIGHT = Gui.window.height
-            Gui.fill.set_color(WHITE)
-            Gui.line.set_color(WHITE)
-            Gui.sprites.set_color(WHITE)
-            Gui.font.set_color(WHITE)
-
-        @staticmethod
-        def begin_scroll(x, y, w, h, content_height=None, scroll_value=0,options=None):
-            if options is None:
-                options = {}
-
-            Gui.isBegin = True
-            Gui.ID += 1
-            Gui.fill.set_color(WHITE)
-            Gui.line.set_color(WHITE)
-            Gui.sprites.set_color(WHITE)
-            Gui.font.set_color(WHITE)
-            Gui.mouse_last_x = Input.get_mouse_x()
-            Gui.mouse_last_y = Input.get_mouse_y()
-            Gui.window.id = Gui.ID -1
-
-            dragging = options.get('dragging', False)
-            bar = options.get('bar', False)
-            background = options.get('background', True) 
-            title = options.get('title', False)
-            barHeight = 20
-            if not Gui.window.enable:
-                Gui.window.x = x
-                Gui.window.y = y
-                Gui.window.width = w
-                Gui.window.height = h
-                Gui.window.enable = True
-            X = Gui.window.x
-            Y = Gui.window.y
-            WIDTH = Gui.window.width
-            HEIGHT = Gui.window.height
+            X = window["x"]
+            Y = window["y"]
+            WIDTH = window["width"]
+            HEIGHT = window["height"]
+        
             if content_height is None:
                 content_height = HEIGHT
 
             max_scroll = max(0, content_height - HEIGHT)
             scroll_value = max(0, min(scroll_value, max_scroll))
 
+
+
             Gui.save_viewport = Render.get_scissor_box()
             Gui.fill.set_clip(X, Y-barHeight, WIDTH, HEIGHT)
             Gui.font.enable_clip(False)
 
             OnBar =  point_in_rect(Input.get_mouse_x(), Input.get_mouse_y(), X, Y-barHeight, WIDTH, barHeight-4)
-            OnTerminal = point_in_rect(Input.get_mouse_x(), Input.get_mouse_y(), X+WIDTH-25, Y-barHeight+4, 20, barHeight-8)
-            Gui.hasFocus = point_in_rect(Input.get_mouse_x(), Input.get_mouse_y(), X, Y, WIDTH, HEIGHT) or OnBar or OnTerminal or Gui.window.dragging
+            OnTerminal = point_in_rect(Input.get_mouse_x(), Input.get_mouse_y(), X+WIDTH-25, Y-barHeight+4, 20, barHeight-8) 
+            Gui.hasFocus = point_in_rect(Input.get_mouse_x(), Input.get_mouse_y(), X, Y, WIDTH, HEIGHT) or OnBar or OnTerminal or window['dragging']
+            if (OnBar and Input.mouse_pressed(0)):
+                Gui.isDragging = ID
+
            
      
             if title:
@@ -258,14 +171,6 @@ class Gui:
                 Gui.font.set_allign(TextAlign.Left)
                 offY = Y - (barHeight ) +  ( (Gui.font.maxHeight / Gui.theme.fontSize) / 2) 
                 Gui.font.write(X + 5, offY ,title)
-            if OnTerminal and Input.mouse_pressed(0):
-                Gui.window.visible = not Gui.window.visible
-           
-            if background and Gui.visible:
-                Gui.fill.set_color(Gui.theme.windowColor)
-                Gui.fill.rectangle(X, Y, WIDTH, HEIGHT)
-
-
             if bar:
                 if OnBar:
                     Gui.fill.set_color(Gui.theme.windowBarColor)
@@ -274,29 +179,43 @@ class Gui:
                 Gui.fill.rectangle(X, Y-barHeight, WIDTH, barHeight)
                 onColor =GREEN
                 ofColor =RED
-                if OnTerminal:
+                if OnTerminal :
                     onColor.fade(1)
                     ofColor.fade(1)
                 else:
                     onColor.fade(0.8)
                     ofColor.fade(0.8)
-                if Gui.visible:
+                if window["visible"]:
                      Gui.fill.set_color(onColor)
                      Gui.fill.rectangle( X + WIDTH-20, Y-(barHeight *0.5)-5, 10, 10)
                 else:
                      Gui.fill.set_color(ofColor)
                      Gui.fill.rectangle(  X + WIDTH-20, Y-(barHeight *0.5)-5, 10, 10)
                      Gui.hasFocus = False
+            if OnTerminal and Input.mouse_pressed(0):
+                window["visible"] = not window["visible"]
+            Gui.visible = window["visible"]
+            if not window["visible"]:
+                return (scroll_value)
+           
+            if background and window["visible"]:
+                Gui.fill.set_color(Gui.theme.windowColor)
+                Gui.fill.rectangle(X, Y, WIDTH, HEIGHT)
+
+
+            isDragging = False 
+            isScrolling = False
                 
             Gui.line.set_clip(X, Y, WIDTH, HEIGHT-barHeight)
             Gui.fill.set_clip(X, Y, WIDTH, HEIGHT-barHeight)
             Gui.font.set_clip(X, Y, WIDTH, HEIGHT-barHeight)
+            #Gui.font.enable_clip(False)
             # Handle scroll bar if content exceeds window height
-            if content_height > HEIGHT and Gui.window.enable:
+            if content_height > HEIGHT:
                 scrollbar_height = int((HEIGHT / content_height) * HEIGHT)
                 scrollbar_y = Y + (scroll_value / max_scroll) * (HEIGHT - scrollbar_height)
                 
-                onScroll = point_in_rect(Input.get_mouse_x(), Input.get_mouse_y(), X + WIDTH - 10, scrollbar_y, 10, scrollbar_height)
+                onScroll = point_in_rect(Input.get_mouse_x(), Input.get_mouse_y(), X + WIDTH - 10, scrollbar_y, 10, scrollbar_height) and Gui.isDragging == -1
                 if onScroll:
                     Gui.fill.set_color(WHITE)
                 else:
@@ -308,20 +227,30 @@ class Gui:
                 if onScroll and Input.mouse_down(0):
                     new_scroll_value = ((Input.get_mouse_y() - Y) / HEIGHT) * max_scroll
                     scroll_value = max(0, min(new_scroll_value, max_scroll))
+                    isScrolling = True
                     
 
 
             if dragging:
-                if (OnBar or  Gui.window.dragging) and Input.mouse_down(0):
-                    if not Gui.window.dragging:
-                        Gui.window.dragging = True
-                        Gui.window.dragX = Input.get_mouse_x() - Gui.window.x
-                        Gui.window.dragY = Input.get_mouse_y() - Gui.window.y
-                    Gui.window.x = Input.get_mouse_x() - Gui.window.dragX
-                    Gui.window.y = Input.get_mouse_y() - Gui.window.dragY
+                if (OnBar or   window['dragging'] ) and Input.mouse_down(0):
+                    if not  window['dragging']:
+                        window['dragging'] = True
+                        window['dragX'] = Input.get_mouse_x() - window["x"]
+                        window['dragY'] = Input.get_mouse_y() - window["y"]
+                    
+                    if Gui.isDragging == ID:
+                        window["x"] = Input.get_mouse_x() - window['dragX']
+                        window["y"] = Input.get_mouse_y() - window['dragY']
+                        isDragging = True
 
-                if Gui.window.dragging and Input.mouse_released(0):
-                    Gui.window.dragging = False
+
+                if window['dragging'] and Input.mouse_released(0):
+                    window['dragging'] = False
+                    Gui.isDragging = -1
+                    
+            
+            #if isDragging or isScrolling:
+            #    Render.set_cursor("hand")
             
             
 
@@ -331,30 +260,36 @@ class Gui:
             # Gui.line.rectangle(  X+WIDTH-25, Y-barHeight+4, 20, barHeight-8)
             # Gui.line.rectangle(  X, Y, WIDTH, HEIGHT)
 
-            Gui.X = Gui.window.x
-            Gui.Y = Gui.window.y - scroll_value
-            Gui.WIDTH = Gui.window.width
-            Gui.HEIGHT = Gui.window.height
+            Gui.X = window["x"]
+            Gui.Y = window["y"] - scroll_value
+            Gui.WIDTH = window["width"]
+            Gui.HEIGHT = window["height"]
             Gui.fill.set_color(WHITE)
             Gui.line.set_color(WHITE)
             Gui.sprites.set_color(WHITE)
             Gui.font.set_color(WHITE)
+        
 
             return scroll_value
 
         @staticmethod
         def end():
             Gui.isBegin = False
-            Gui.window.enable = False
+        
+            
+   
+
+            
 
             
 
         @staticmethod
         def button(x, y, w, h, label):
-            if not Gui.isBegin:
+            if not Gui.isBegin :
                 print("widgets must be called between Begin() and End()")
                 return
-            if not Gui.visible: return
+            if not Gui.visible :
+                return
 
             Gui.ID += 1
 
@@ -365,10 +300,11 @@ class Gui:
 
             mouse_x = Input.get_mouse_x()
             mouse_y = Input.get_mouse_y()
-            isOver = point_in_rect( mouse_x, mouse_y, X, Y, WIDTH, HEIGHT)
+            isOver = point_in_rect( mouse_x, mouse_y, X, Y, WIDTH, HEIGHT) and Gui._can_process()
             isPressed = False
-            if isOver and Input.mouse_down(0):
+            if isOver and Input.mouse_down(0) and  Gui._can_process():
                 isPressed = True
+
 
             Gui.fill.set_color(Gui.theme.backgroundColor)
             move = 0
@@ -384,6 +320,7 @@ class Gui:
                 if isPressed:
                     Gui.font.set_size(Gui.theme.fontOverSize+2)
 
+
                 Gui.FocusId = Gui.ID-1
             else:
                 Gui.font.set_color(Gui.theme.buttonLabelColor)
@@ -398,6 +335,7 @@ class Gui:
 
             if isOver and Input.mouse_released(0):
                 isPressed = False
+                
 
 
             return isPressed
@@ -407,7 +345,8 @@ class Gui:
             if not Gui.isBegin:
                 print("widgets must be called between Begin() and End()")
                 return
-            if not Gui.visible: return
+            if not Gui.visible:
+                return
 
             Gui.ID += 1
 
@@ -420,7 +359,7 @@ class Gui:
 
             mouse_x = Input.get_mouse_x()
             mouse_y = Input.get_mouse_y()
-            isOver = point_in_rect( mouse_x, mouse_y, X, Y, WIDTH, HEIGHT)
+            isOver = point_in_rect( mouse_x, mouse_y, X, Y, WIDTH, HEIGHT) and Gui._can_process()
 
             if isOver:
                 Gui.font.set_color(Gui.theme.fontOverColor)
@@ -435,7 +374,11 @@ class Gui:
         @staticmethod
         def text(x, y, label):
           
-
+            if not Gui.isBegin:
+                print("widgets must be called between Begin() and End()")
+                return
+            if not Gui.visible:
+                return
           
 
             Gui.font.set_size(Gui.theme.fontSize)
@@ -464,7 +407,6 @@ class Gui:
                 return isChecked
             if not Gui.visible:
                 return isChecked
-
             Gui.ID += 1
 
             X = Gui.X + x
@@ -475,7 +417,7 @@ class Gui:
 
             mouse_x = Input.get_mouse_x()
             mouse_y = Input.get_mouse_y()
-            isOver = point_in_rect(mouse_x, mouse_y, X, Y, size, size)
+            isOver = point_in_rect(mouse_x, mouse_y, X, Y, size, size) and Gui._can_process()
             if isOver:
                 Gui.FocusId = Gui.ID-1
                 Gui.fill.set_color(Gui.theme.backgroundColor)
@@ -487,6 +429,9 @@ class Gui:
                 isChecked = not isChecked
                 Gui.FocusId = Gui.ID-1
                 isPressed = True
+                Render.set_cursor("hand")
+            
+                
             
   
             Gui.fill.rectangle(X, Y, size, size)
@@ -495,7 +440,7 @@ class Gui:
                 Gui.fill.set_color(Gui.theme.checkBoxSelectedColor)
                 Gui.fill.rectangle(X + 4, Y + 4, size - 8, size - 8)
 
-      
+
 
 
             
@@ -529,7 +474,7 @@ class Gui:
             Gui.fill.rectangle(X, Y + (HEIGHT // 2) - 2, WIDTH, 4)
 
             slider_pos = int((value - min_value) / (max_value - min_value) * WIDTH)
-            isOver = point_in_rect(mouse_x, mouse_y, X + slider_pos - (HEIGHT // 2), Y, HEIGHT, HEIGHT)
+            isOver = point_in_rect(mouse_x, mouse_y, X + slider_pos - (HEIGHT // 2), Y, HEIGHT, HEIGHT) and Gui._can_process()  
 
 
     
@@ -539,10 +484,10 @@ class Gui:
                 Gui.fill.set_color(Gui.theme.sliderFillColorOff)
 
 
-            Gui.fill.rectangle(X + slider_pos - (HEIGHT // 2), Y, HEIGHT, HEIGHT)
+            Gui.fill.rectangle(X + slider_pos - (HEIGHT // 2)+8, Y, 8, HEIGHT-2)
 
 
-            isInBound = point_in_rect(mouse_x, mouse_y, X , Y, WIDTH, HEIGHT+5)
+            isInBound = point_in_rect(mouse_x, mouse_y, X , Y, WIDTH, HEIGHT+5) and Gui._can_process()
 
 
             if isInBound and Input.mouse_down(0):
@@ -575,7 +520,7 @@ class Gui:
             percentage = max(0, min(percentage, 100))
 
             slider_pos = int((percentage / 100) * WIDTH)
-            isInBound = point_in_rect(mouse_x, mouse_y, X, Y, WIDTH, HEIGHT)
+            isInBound = point_in_rect(mouse_x, mouse_y, X, Y, WIDTH, HEIGHT) and Gui._can_process()
 
 
 
@@ -618,7 +563,7 @@ class Gui:
 
 
             slider_pos = int((value - min_value) / (max_value - min_value) * HEIGHT)
-            isOver = point_in_rect(mouse_x, mouse_y, X, Y + slider_pos - (WIDTH // 2), WIDTH, WIDTH)
+            isOver = point_in_rect(mouse_x, mouse_y, X, Y + slider_pos - (WIDTH // 2), WIDTH, WIDTH) and Gui._can_process()
 
             if isOver:
                 Gui.fill.set_color(Gui.theme.sliderFillColor)
@@ -661,7 +606,7 @@ class Gui:
 
 
             slider_pos = int((percentage / 100) * HEIGHT)
-            isOver = point_in_rect(mouse_x, mouse_y, X, Y + slider_pos - (WIDTH // 2), WIDTH, WIDTH)
+            isOver = point_in_rect(mouse_x, mouse_y, X, Y + slider_pos - (WIDTH // 2), WIDTH, WIDTH) and Gui._can_process()
 
 
             if isOver:
@@ -684,10 +629,9 @@ class Gui:
         def radio(x, y, w, h, label, value):
             if not Gui.isBegin:
                 print("widgets must be called between Begin() and End()")
-                return (-1, False)
-            
+                return (value , False)
             if not Gui.visible:
-                return (-1, False)
+                return (value , False)
 
             Gui.ID += 1
 
@@ -699,7 +643,7 @@ class Gui:
 
             mouse_x = Input.get_mouse_x()
             mouse_y = Input.get_mouse_y()
-            isOver = point_in_rect(mouse_x, mouse_y, X - (WIDTH * 0.5), Y - (HEIGHT * 0.5), WIDTH, HEIGHT)
+            isOver = point_in_rect(mouse_x, mouse_y, X - (WIDTH * 0.5), Y - (HEIGHT * 0.5), WIDTH, HEIGHT) and Gui._can_process()
             isPressed = False
 
             if isOver and Input.mouse_pressed(0):
@@ -744,7 +688,6 @@ class Gui:
             if not Gui.isBegin:
                 print("widgets must be called between Begin() and End()")
                 return (-1, False)
-            
             if not Gui.visible:
                 return (-1, False)
 
@@ -827,10 +770,9 @@ class Gui:
         def checkbox_group(x, y, w, h, gap, cols, labels, border=False, title=""):
             if not Gui.isBegin:
                 print("widgets must be called between Begin() and End()")
-                return labels
-            
+                return (labels, False)
             if not Gui.visible:
-                return labels
+                return (labels, False)
 
             Gui.ID += 1
 
@@ -904,8 +846,8 @@ class Gui:
             if not Gui.isBegin:
                 print("widgets must be called between Begin() and End()")
                 return
-
-            if not Gui.visible: return
+            if not Gui.visible:
+                return
 
             Gui.ID += 1
 
@@ -925,8 +867,8 @@ class Gui:
             if not Gui.isBegin:
                 print("widgets must be called between Begin() and End()")
                 return
-
-            if not Gui.visible: return
+            if not Gui.visible:
+                return
 
             Gui.ID += 1
 
@@ -949,8 +891,8 @@ class Gui:
             if not Gui.isBegin:
                 print("widgets must be called between Begin() and End()")
                 return
-
-            if not Gui.visible: return
+            if not Gui.visible:
+                return
 
             Gui.ID += 1
 
@@ -966,7 +908,7 @@ class Gui:
                 value = 0
             mouse_x = Input.get_mouse_x()
             mouse_y = Input.get_mouse_y()
-            isOver = point_in_rect(mouse_x, mouse_y, X, Y, WIDTH, HEIGHT)
+            isOver = point_in_rect(mouse_x, mouse_y, X, Y, WIDTH, HEIGHT) and Gui._can_process()
             if isOver:
                 Gui.FocusId =Gui.ID-1
 
@@ -984,9 +926,9 @@ class Gui:
         def listbox(x, y, w, h, items, scroll_value):
             if not Gui.isBegin:
                 print("widgets must be called between Begin() and End()")
-                return (-1, False, scroll_value)
+                return (-1, False,scroll_value)
             if not Gui.visible:
-                return (-1, False, scroll_value)
+                return (-1, False,scroll_value)
 
             Gui.ID += 1
 
@@ -1018,7 +960,7 @@ class Gui:
                 item_label = items[start_index + i]
                 item_y = item_height  + i * item_height  # Ajusta a posição Y do item
                 
-                onItem = point_in_rect(mouse_x, mouse_y, X, Y + (item_y-10) - (item_height//2), WIDTH-12, item_height)
+                onItem = point_in_rect(mouse_x, mouse_y, X, Y + (item_y-10) - (item_height//2), WIDTH-12, item_height) and Gui._can_process()
                 if onItem or selected == start_index + i:
                      Gui.separator(x, (y + item_y)- (item_height-2), w-12, item_height, Color=RED,fill=False)
                      if Input.mouse_down(0):
@@ -1037,7 +979,7 @@ class Gui:
                 scrollbar_y = Y + (scroll_value / max_scroll) * (HEIGHT - scrollbar_height)
                 
             
-                onScroll = point_in_rect(mouse_x, mouse_y, X + w - 10, scrollbar_y, 20, scrollbar_height)
+                onScroll = point_in_rect(mouse_x, mouse_y, X + w - 10, scrollbar_y, 20, scrollbar_height) and Gui._can_process()
                 if onScroll:
                     Gui.fill.set_color(WHITE) 
                 else:
@@ -1055,10 +997,6 @@ class Gui:
 
         @staticmethod
         def _combobox_button(x, y, w, h, label):
-            if not Gui.isBegin:
-                print("widgets must be called between Begin() and End()")
-                return
-            if not Gui.visible: return
 
             Gui.ID += 1
 
@@ -1069,7 +1007,7 @@ class Gui:
 
             mouse_x = Input.get_mouse_x()
             mouse_y = Input.get_mouse_y()
-            isOver = point_in_rect( mouse_x, mouse_y, X, Y, WIDTH, HEIGHT)
+            isOver = point_in_rect( mouse_x, mouse_y, X, Y, WIDTH, HEIGHT) and Gui._can_process()
             isPressed = False
             if isOver and Input.mouse_pressed(0):
                 isPressed = True
@@ -1108,7 +1046,7 @@ class Gui:
         @staticmethod
         def combobox(x, y, w, h, items, selected_index, is_open, scroll_value):
             if not Gui.isBegin:
-                print("widgets must be chamados entre Begin() e End()")
+                print("widgets must be between 'begin' and 'end'")
                 return (selected_index, is_open, scroll_value)
             
             if not Gui.visible:
@@ -1147,3 +1085,395 @@ class Gui:
                 if Input.mouse_pressed(0):  
                     is_open = False  
             return (selected_index, is_open, scroll_value)
+    
+        @staticmethod
+        def input_text(x, y, w, h, options=None):
+            if not Gui.isBegin:
+                    print("widgets must be between 'begin' and 'end'")
+                    return False
+                
+            if not Gui.visible:
+                    return False
+            
+            if options is None:
+                options = {"text":"","select":False, "password":False, "multiline":False}
+
+            Gui.ID += 1
+            X = Gui.X + x
+            Y = Gui.Y + y
+            WIDTH = w
+            HEIGHT = h
+            selected = options.get("select", False)
+            text = options.get("text", "")
+  
+            mouse_x = Input.get_mouse_x()
+            mouse_y = Input.get_mouse_y()
+            isOver = point_in_rect(mouse_x, mouse_y, X, Y, WIDTH, HEIGHT) and Gui._can_process()
+            if isOver and Input.mouse_pressed(0):
+                Gui.FocusId = Gui.ID-1  
+                options["select"] = True
+
+            Gui.fill.set_color(Gui.theme.backgroundColor)
+            Gui.fill.rectangle(X, Y, WIDTH, HEIGHT)
+            Gui.font.set_color(Gui.theme.fontOverColor)
+            Gui.font.set_size(Gui.theme.fontOverSize)
+
+                    
+
+            if selected and not isOver and Input.mouse_down(0) :    
+                options["select"] = False
+
+            if selected or isOver:
+                Gui.line.set_color(Gui.theme.overColor)
+                Gui.line.rectangle(X-1, Y-1, WIDTH+2, HEIGHT+2)
+            
+
+            #clip = Gui.font.get_clip()
+            #Gui.font.set_clip(X, Y, WIDTH, HEIGHT)
+            code = ""
+            isPassword =False
+
+ 
+
+            #if options.get("multiline", False):
+            #    text = text.replace("\n", "↵")
+
+            Gui.font.set_allign(TextAlign.Left)
+            offY = Y +(HEIGHT * 0.5) - (Gui.font.maxHeight *0.5)
+
+            cursorX = X + Gui.font.get_text_width(text)
+            if cursorX > X + WIDTH -2: 
+                cursorX = X + WIDTH -2
+
+            if selected and Input.keyboard_any():
+                key = Input.keyboard_last_key()
+                char = Input.keyboard_last_char()
+                if key == glfw.KEY_SPACE and cursorX < (X + WIDTH) - 4:
+                    text += " "
+                if key == glfw.KEY_DELETE: 
+                    if len(text) > 0:
+                        text = text[:-1]
+                if key == glfw.KEY_BACKSPACE:
+                    if len(text) > 0:
+                        text = text[:-1]
+                if key == glfw.KEY_ENTER:
+                    options["select"] = False
+                    options["text"] = text
+                    return selected
+                if ((key>= 32 and key <= 126) and char is not None) and cursorX < (X + WIDTH) - 4:
+                        text += char
+
+            if options.get("password", False):
+                code = "*" * len(text) +1
+                isPassword = True
+            if isPassword:
+                Gui.font.write(X, offY, code)
+            else:
+                Gui.font.write(X, offY, text)
+
+            if selected:
+                Gui.fill.set_color(Gui.theme.backgroundColor)
+                blink = int(time.time() * 500) % 500 > 250
+                if blink:
+                    Gui.fill.set_color(Gui.theme.editCursorColor)
+                Gui.fill.rectangle(cursorX-1, Y, 4, HEIGHT)
+            else:
+                Gui.fill.set_color(Gui.theme.editCursorColor)
+                Gui.fill.rectangle(cursorX-1, Y, 4, HEIGHT)
+                
+
+            #Gui.font.set_clip(clip.x, clip.y, clip.width, clip.height)
+            options["text"] = text
+            return selected
+        
+        @staticmethod
+        def input_numeric(x, y, w, h, options=None):
+            if not Gui.isBegin:
+                    print("widgets must be between 'begin' and 'end'")
+                    return False
+                
+            if not Gui.visible:
+                    return False
+            
+            if options is None:
+                options = {"text":"","select":False}
+
+            Gui.ID += 1
+            X = Gui.X + x
+            Y = Gui.Y + y
+            WIDTH = w
+            HEIGHT = h
+            selected = options.get("select", False)
+            text = options.get("text", "")
+
+            mouse_x = Input.get_mouse_x()
+            mouse_y = Input.get_mouse_y()
+            isOver = point_in_rect(mouse_x, mouse_y, X, Y, WIDTH, HEIGHT) and Gui._can_process()
+            if isOver and Input.mouse_pressed(0):
+                Gui.FocusId = Gui.ID-1  
+                options["select"] = True
+
+            Gui.fill.set_color(Gui.theme.backgroundColor)
+            Gui.fill.rectangle(X, Y, WIDTH, HEIGHT)
+            Gui.font.set_color(Gui.theme.fontOverColor)
+            Gui.font.set_size(Gui.theme.fontOverSize)
+
+                    
+
+            if selected and not isOver and Input.mouse_down(0) :    
+                options["select"] = False
+
+            if selected or isOver:
+                Gui.line.set_color(Gui.theme.overColor)
+                Gui.line.rectangle(X-1, Y-1, WIDTH+2, HEIGHT+2)
+            
+
+            clip = Gui.font.get_clip()
+            #Gui.font.set_clip(X, Y, WIDTH, HEIGHT)
+
+            Gui.font.set_allign(TextAlign.Left)
+            offY = Y +(HEIGHT * 0.5) - (Gui.font.maxHeight *0.5)
+
+            cursorX = X + Gui.font.get_text_width(text)
+            if cursorX > X + WIDTH -2: 
+                cursorX = X + WIDTH -2
+
+            if selected and Input.keyboard_any():
+                key = Input.keyboard_last_key()
+                char = Input.keyboard_last_char()
+                if key == glfw.KEY_SPACE and cursorX < (X + WIDTH) - 4:
+                    text += " "
+                if key == glfw.KEY_DELETE: 
+                    if len(text) > 0:
+                        text = text[:-1]
+                if key == glfw.KEY_BACKSPACE:
+                    if len(text) > 0:
+                        text = text[:-1]
+                if key == glfw.KEY_ENTER:
+                    options["select"] = False
+                    options["text"] = text
+                    return selected
+    
+                if key >= 48 and key <= 57:
+                    text += char
+     
+            Gui.font.write(X, offY, text)
+
+            if selected:
+                Gui.fill.set_color(Gui.theme.backgroundColor)
+                blink = int(time.time() * 500) % 500 > 250
+                if blink:
+                    Gui.fill.set_color(Gui.theme.editCursorColor)
+                Gui.fill.rectangle(cursorX-1, Y, 4, HEIGHT)
+            else:
+                Gui.fill.set_color(Gui.theme.editCursorColor)
+                Gui.fill.rectangle(cursorX-1, Y, 4, HEIGHT)
+                
+
+            #Gui.font.set_clip(clip.x, clip.y, clip.width, clip.height)
+            options["text"] = text
+            return selected
+        
+        @staticmethod
+        def spin(x, y, w, h, min_value,max_value,value,force=1):
+            if not Gui.isBegin:
+                    print("widgets must be between 'begin' and 'end'")
+                    return value
+                
+            if not Gui.visible:
+                    return value
+     
+
+
+            Gui.ID += 1
+            X = Gui.X + x
+            Y = Gui.Y + y
+            WIDTH  = w - 20
+            HEIGHT = h
+
+
+            mouse_x = Input.get_mouse_x()
+            mouse_y = Input.get_mouse_y()
+            isOver = point_in_rect(mouse_x, mouse_y, X, Y, WIDTH, HEIGHT) and Gui._can_process()
+            if isOver and Input.mouse_pressed(0):
+                Gui.FocusId = Gui.ID-1  
+        
+            mouse_x = Input.get_mouse_x()
+            mouse_y = Input.get_mouse_y()
+            isOver = point_in_rect(mouse_x, mouse_y, X, Y, WIDTH, HEIGHT) and Gui._can_process()
+            if isOver and Input.mouse_pressed(0):
+                Gui.FocusId = Gui.ID-1  
+
+
+            top    = Gui._dummy_button(WIDTH + x +1, y, 20, HEIGHT//2-1)
+            bottom = Gui._dummy_button(WIDTH + x+1, y + HEIGHT//2, 20, HEIGHT//2)
+            if top :
+                value += force
+            if bottom :
+                value -= force
+                
+            if value < min_value:
+                value = min_value
+            if value > max_value:
+                value = max_value
+
+            Gui.fill.set_color(Gui.theme.backgroundColor)
+            Gui.fill.rectangle(X, Y, WIDTH, HEIGHT)
+            Gui.font.set_color(Gui.theme.fontOverColor)
+            Gui.font.set_size(Gui.theme.fontOverSize)
+
+                    
+
+
+            if isOver:
+                Gui.line.set_color(Gui.theme.overColor)
+                Gui.line.rectangle(X-1, Y-1, WIDTH+2, HEIGHT+2)
+            
+
+            clip = Gui.font.get_clip()
+            Gui.font.set_clip(X, Y, WIDTH, HEIGHT)
+
+            Gui.font.set_allign(TextAlign.Left)
+            offY = Y +(HEIGHT * 0.5) - (Gui.font.maxHeight *0.5)
+
+            text = str(value)
+
+            cursorX = X + Gui.font.get_text_width(text)
+            if cursorX > X + WIDTH -2: 
+                cursorX = X + WIDTH -2
+
+            if isOver and Input.keyboard_any():
+                key = Input.keyboard_last_key()
+                char = Input.keyboard_last_char()
+
+                if key == glfw.KEY_DELETE: 
+                   value = 0
+                   text = "0"
+                if key == glfw.KEY_BACKSPACE:
+                    value = 0
+                    text = "0"
+
+    
+                if (key >= 48 and key <= 57) and cursorX < (X + WIDTH) - 4:
+                    text += char
+            
+            if len(text) > 0: 
+                value = int(text)
+            Gui.font.write(X, offY, text)
+                
+
+            #Gui.font.set_clip(clip.x, clip.y, clip.width, clip.height)
+
+            return value
+        @staticmethod
+        def _dummy_button(x, y, w, h):
+
+            Gui.ID += 1
+
+            X = Gui.X + x   
+            Y = Gui.Y + y
+            WIDTH  = w
+            HEIGHT = h
+
+            mouse_x = Input.get_mouse_x()
+            mouse_y = Input.get_mouse_y()
+            isOver = point_in_rect( mouse_x, mouse_y, X, Y, WIDTH, HEIGHT) and Gui._can_process()
+            isPressed = False
+            if isOver and Input.mouse_pressed(0):
+                isPressed = True
+
+            Gui.fill.set_color(Gui.theme.backgroundColor)
+            move = 0
+            if isPressed:
+                move = 2
+            Gui.fill.rectangle(X +move, Y + move, WIDTH, HEIGHT)
+
+            if isOver:
+                Gui.line.set_color(Gui.theme.overColor)
+                Gui.line.rectangle(X-1, Y-1, WIDTH+2, HEIGHT+2)
+    
+                Gui.FocusId = Gui.ID-1
+
+
+
+                    
+        
+
+            if isOver and Input.mouse_released(0):
+                isPressed = False
+
+
+            return isPressed                    
+        
+
+
+        @staticmethod
+        def memo(x, y, w, h, items, scroll_value):
+            if not Gui.isBegin:
+                print("widgets must be called between Begin() and End()")
+                return (-1, False,scroll_value)
+            if not Gui.visible:
+                return (-1, False,scroll_value)
+
+            Gui.ID += 1
+
+            X = Gui.X + x
+            Y = Gui.Y + y
+            WIDTH = w
+            HEIGHT = h
+            item_height = 20  # Altura de cada item (ajustar ??)
+            visible_items = h // item_height  # Quantos itens podem ser mostrados de uma vez??
+            selected = -1
+            isDown = False
+            
+            
+
+            Gui.panel(x, y, w, h)
+
+            # Calcula o máximo de scroll baseado no número de itens
+            max_scroll = max(0, len(items) - visible_items)
+            scroll_value = max(0, min(scroll_value, max_scroll))
+            mouse_x = Input.get_mouse_x()
+            mouse_y = Input.get_mouse_y()
+            
+             
+            # Desenha os itens visíveis dentro do painel
+            start_index = int(scroll_value)
+            for i in range(visible_items):
+                if start_index + i >= len(items):
+                    break  
+                item_label = items[start_index + i]
+                item_y = item_height  + i * item_height  # Ajusta a posição Y do item
+                
+                onItem = point_in_rect(mouse_x, mouse_y, X, Y + (item_y-10) - (item_height//2), WIDTH-12, item_height) and Gui._can_process()
+                if onItem or selected == start_index + i:
+                     if Input.mouse_down(0):
+                        selected = start_index + i
+                        isDown = True
+                    
+         
+                
+                Gui.text(X + 1, (Y + item_y)-(item_height//2), item_label)  # Ajuste do label dentro do item
+
+
+            # Desenhar a barra de scroll se houver mais itens do que espaço
+            if len(items) > visible_items:
+                scrollbar_height = int((visible_items / len(items)) * HEIGHT)
+                scrollbar_y = Y + (scroll_value / max_scroll) * (HEIGHT - scrollbar_height)
+                
+            
+                onScroll = point_in_rect(mouse_x, mouse_y, X + w - 10, scrollbar_y, 20, scrollbar_height) and Gui._can_process()
+                if onScroll:
+                    Gui.fill.set_color(WHITE) 
+                else:
+                    Gui.fill.set_color(Gui.theme.backgroundColor)  
+
+
+                Gui.fill.rectangle(X + w - 10, scrollbar_y, 10, scrollbar_height)
+
+
+                if onScroll and Input.mouse_down(0):
+                    new_scroll_value = ((mouse_y - Y) / HEIGHT) * max_scroll
+                    scroll_value = max(0, min(new_scroll_value, max_scroll))
+
+            return (selected, isDown, scroll_value)

@@ -53,8 +53,19 @@ class Core:
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         Render.init()
+        Render.set_size(width, height)
         Render.set_viewport(0, 0, width, height)
-        Render.defaultFont = Font(1024)
+        Render.window = self.window
+        Render.shaders["default"] = DefaultShader()
+        Render.shaders["solid"]   = SolidShader()
+        Render.shaders["texture"] = TextureShader()
+        Render.shaders["point"]   = PointShader()
+        Render.defaultFont = Font(1024*8)
+        Render.set_matrix(VIEW_MATRIX, glm.mat4(1.0))
+        Render.set_matrix(PROJECTION_MATRIX, glm.mat4(1.0))
+        Render.set_matrix(MODEL_MATRIX, glm.mat4(1.0))
+        
+        
         fontData = base64.b64decode(defaultFontData).decode('utf-8')
         texture = Texture2D()
         texture.decode(defaultFontImage)
@@ -66,7 +77,9 @@ class Core:
         if key == glfw.KEY_ESCAPE and action == glfw.PRESS:
             glfw.set_window_should_close(window, 1)
         down = action != glfw.RELEASE
-        Input.set_key_state(key, down)
+        chars = glfw.get_key_name(key, scancode)
+        if not chars: chars = ""
+        Input.set_key_state(key, down, chars)
 
     def _cursor_callback(self, window, xpos, ypos):
         Input.set_mouse_cursor(xpos, ypos,self.width,self.height)

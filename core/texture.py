@@ -131,4 +131,38 @@ class Texture2D(Texture):
 
         glBindTexture(GL_TEXTURE_2D, 0)
         print(f"Texture  {file_path} {self.id} {self.format} {self.width}x{self.height} loaded" )
-                
+
+    def load_from_image(self,image):
+        img_data = np.array(image, dtype=np.uint8)
+        self.width, self.height = image.size
+
+        img_mode = image.mode
+        glFormat = 0
+        
+        if img_mode == "L": 
+            self.format = ColorFormat.GRAYSCALE
+            glFormat = GL_RED
+        elif img_mode == "LA":  
+            self.format = ColorFormat.GRAY_ALPHA
+            glFormat = GL_RG
+        elif img_mode == "RGB": 
+            glFormat = GL_RGB
+            self.format = ColorFormat.RGB
+        elif img_mode == "RGBA": 
+            self.format = ColorFormat.RGBA
+            glFormat = GL_RGBA
+
+        self.id = glGenTextures(1)
+        glBindTexture(GL_TEXTURE_2D, self.id)
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+
+  
+        glTexImage2D(GL_TEXTURE_2D, 0,  glFormat, self.width, self.height, 0,  glFormat, GL_UNSIGNED_BYTE, img_data)
+        glGenerateMipmap(GL_TEXTURE_2D)
+
+        glBindTexture(GL_TEXTURE_2D, 0)
+        print(f"Texture  {file_path} {self.id} {self.format} {self.width}x{self.height} loaded" )                

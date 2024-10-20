@@ -3,7 +3,7 @@ import numpy as np
 from OpenGL.GL import *
 from .core import *
 from .texture import Texture
-from .material import SolidMaterial,SpriteMaterial
+
 import math
 
 import ctypes
@@ -40,16 +40,17 @@ class Batch:
         self.maxVertex = maxVertex
         self.stride = 7  # 3 para posição, 4 para cor
         self.vertices = [0.0] * (maxVertex * self.stride)
+        self.totalAlloc =  len(self.vertices) // 7
         self.vertexCount = 0
         self.count = 0
         self.color_r = 1.0
         self.color_g = 1.0
         self.color_b = 1.0
         self.color_a = 1.0
-        self.depth = 0.0
+        self.depth = 0.05
         self.clip_enabled = False
         self.clip_rect = [0, 0, 0, 0]
-        self.material2D = SolidMaterial()
+        self.shader = Render.get_shader("solid")
         self.init()
 
     def init(self):
@@ -66,17 +67,23 @@ class Batch:
         glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, self.stride * 4, ctypes.c_void_p(12))
         glEnableVertexAttribArray(1)
 
-    def flush(self):
+    def _flush(self):
         self.count = 0
         self.vertexCount = 0
 
 
+    def render(self):
+        if self.vertexCount == 0:
+            return
 
+        self._flush()
 
 
 
 
     def vertex3f(self, x, y, z):
+        if self.count >= self.totalAlloc:
+            self._flush()
         self.vertices[self.count] = x
         self.vertices[self.count + 1] = y
         self.vertices[self.count + 2] = z
@@ -147,6 +154,77 @@ class LinesBatch(Batch):
             self.line2d(prev_x, prev_y, new_x, new_y)
             prev_x, prev_y = new_x, new_y
 
+    
+    def grid(self, slices, spacing, axes=False):
+        if axes:
+            self.set_color(RED)
+            self.line3d(0,0.5,0,1,0.5,0)
+            self.set_color(BLUE)
+            self.line3d(0,0.5,0,0,1.5,0)
+            self.set_color(GREEN)
+            self.line3d(0,0.5,0,0,0.5,1)
+        half = slices // 2
+        for i in range(-half, half + 1):
+            if i==0:
+                self.set_rgb(0.5, 0.5, 0.4)
+            else:
+                self.set_rgb(0.75, 0.75, 0.75)
+            self.line3d(i * spacing, 0, -half * spacing, i * spacing, 0, half * spacing)
+            self.line3d(-half * spacing, 0, i * spacing, half * spacing, 0, i * spacing)
+    def cube(self,x, y, z, size):
+        
+        self.line3d(x, y, z, x + size, y, z)
+        self.line3d(x, y, z, x, y + size, z)
+        self.line3d(x, y, z, x, y, z + size)
+        self.line3d(x + size, y, z, x + size, y + size, z)
+        self.line3d(x + size, y, z, x + size, y, z + size)
+        self.line3d(x, y + size, z, x + size, y + size, z)
+        self.line3d(x, y + size, z, x, y + size, z + size)
+        self.line3d(x, y, z + size, x + size, y, z + size)
+        self.line3d(x, y, z + size, x, y + size, z + size)
+        self.line3d(x + size, y + size, z, x + size, y + size, z + size)
+        self.line3d(x + size, y + size, z, x, y + size, z + size)
+        self.line3d(x + size, y + size, z + size, x, y + size, z + size)
+        self.line3d(x + size, y + size, z + size, x + size, y, z + size)
+    
+    def sphere(self,x, y, z, radius, num_lines=12):
+            segments = num_lines // 2
+            step = math.pi / segments
+
+            # Linhas longitudinais
+            for lat in range(-segments, segments + 1):
+                lat_angle = lat * step
+                for lon in range(0, num_lines + 1):
+                    lon_angle = lon * step
+                    x1 = x + radius * math.cos(lat_angle) * math.cos(lon_angle)
+                    y1 = y + radius * math.cos(lat_angle) * math.sin(lon_angle)
+                    z1 = z + radius * math.sin(lat_angle)
+
+                    lon_angle_next = (lon + 1) * step
+                    x2 = x + radius * math.cos(lat_angle) * math.cos(lon_angle_next)
+                    y2 = y + radius * math.cos(lat_angle) * math.sin(lon_angle_next)
+                    z2 = z + radius * math.sin(lat_angle)
+
+                    self.line3d(x1, y1, z1, x2, y2, z2)
+
+            # Linhas latitudinais
+            for lon in range(0, num_lines + 1):
+                lon_angle = lon * step
+                for lat in range(-segments, segments + 1):
+                    lat_angle = lat * step
+                    x1 = x + radius * math.cos(lat_angle) * math.cos(lon_angle)
+                    y1 = y + radius * math.cos(lat_angle) * math.sin(lon_angle)
+                    z1 = z + radius * math.sin(lat_angle)
+
+                    lat_angle_next = (lat + 1) * step
+                    x2 = x + radius * math.cos(lat_angle_next) * math.cos(lon_angle)
+                    y2 = y + radius * math.cos(lat_angle_next) * math.sin(lon_angle)
+                    z2 = z + radius * math.sin(lat_angle_next)
+
+                    self.line3d(x1, y1, z1, x2, y2, z2)
+
+
+
     def ellipse(self, x, y, radius_x, radius_y, segments=36):
         angle_increment = 2 * math.pi / segments
         prev_x = x + radius_x
@@ -188,19 +266,87 @@ class LinesBatch(Batch):
             prev_inner_x, prev_inner_y = new_inner_x, new_inner_y
             prev_outer_x, prev_outer_y = new_outer_x, new_outer_y
 
+    def draw_bounding_box(self,box,color):
+        self.set_color(color)
+        self.vertex3f(box.min.x, box.min.y, box.min.z)
+        self.vertex3f(box.max.x, box.min.y, box.min.z)
+        
+    
+        self.vertex3f(box.max.x, box.min.y, box.min.z)
+        self.vertex3f(box.max.x, box.max.y, box.min.z)
+    
+        self.vertex3f(box.max.x, box.max.y, box.min.z)
+        self.vertex3f(box.min.x, box.max.y, box.min.z)
+    
+        self.vertex3f(box.min.x, box.max.y, box.min.z)
+        self.vertex3f(box.min.x, box.min.y, box.min.z)
+    
+        self.vertex3f(box.min.x, box.min.y, box.max.z)
+        self.vertex3f(box.max.x, box.min.y, box.max.z)
+    
+        self.vertex3f(box.max.x, box.min.y, box.max.z)
+        self.vertex3f(box.max.x, box.max.y, box.max.z)
+    
+        self.vertex3f(box.max.x, box.max.y, box.max.z)
+        self.vertex3f(box.min.x, box.max.y, box.max.z)
+    
+        self.vertex3f(box.min.x, box.max.y, box.max.z)
+        self.vertex3f(box.min.x, box.min.y, box.max.z)
+    
+        self.vertex3f(box.min.x, box.min.y, box.min.z)
+        self.vertex3f(box.min.x, box.min.y, box.max.z)
+    
+        self.vertex3f(box.max.x, box.min.y, box.min.z)
+        self.vertex3f(box.max.x, box.min.y, box.max.z)
+    
+        self.vertex3f(box.max.x, box.max.y, box.min.z)
+        self.vertex3f(box.max.x, box.max.y, box.max.z)
+    
+        self.vertex3f(box.min.x, box.max.y, box.min.z)
+        self.vertex3f(box.min.x, box.max.y, box.max.z)
 
-    def render(self):
-        if self.vertexCount == 0:
-            return
-        Render.set_material(self.material2D)
-        self.material2D.shader.set_matrix4fv("uView", glm.value_ptr(Render.matrix[VIEW_MATRIX]))
-        self.material2D.shader.set_matrix4fv("uProjection", glm.value_ptr(Render.matrix[PROJECTION_MATRIX]))
-        glBindBuffer(GL_ARRAY_BUFFER, self.vbo)
-        glBufferSubData(GL_ARRAY_BUFFER, 0, self.count * 4, np.array(self.vertices, dtype=np.float32))
-        glBindVertexArray(self.vao)
-        glDrawArrays(GL_LINES, 0, self.vertexCount)
-        self.count = 0
-        self.vertexCount = 0
+    def triangle_3d (self, v1, v2, v3):
+        self.vertex3f(v1.x, v1.y, v1.z)
+        self.vertex3f(v2.x, v2.y, v2.z)
+        self.vertex3f(v3.x, v3.y, v3.z)
+    
+    def draw_transform_bounding_box(self,box,color,mat):
+        self.set_color(color)
+        edges = box.get_edges()
+        
+        for c in range(0, 8):
+            edges[c] = mat * edges[c]
+        self.line3d(edges[5].x, edges[5].y, edges[5].z, edges[1].x, edges[1].y, edges[1].z)
+        self.line3d(edges[1].x, edges[1].y, edges[1].z, edges[3].x, edges[3].y, edges[3].z)
+        self.line3d(edges[3].x, edges[3].y, edges[3].z, edges[7].x, edges[7].y, edges[7].z)
+        self.line3d(edges[7].x, edges[7].y, edges[7].z, edges[5].x, edges[5].y, edges[5].z)
+
+        self.line3d(edges[0].x, edges[0].y, edges[0].z, edges[2].x, edges[2].y, edges[2].z)
+        self.line3d(edges[2].x, edges[2].y, edges[2].z, edges[6].x, edges[6].y, edges[6].z)
+        self.line3d(edges[6].x, edges[6].y, edges[6].z, edges[4].x, edges[4].y, edges[4].z)
+        self.line3d(edges[4].x, edges[4].y, edges[4].z, edges[0].x, edges[0].y, edges[0].z)
+
+        self.line3d(edges[1].x, edges[1].y, edges[1].z, edges[0].x, edges[0].y, edges[0].z)
+        self.line3d(edges[3].x, edges[3].y, edges[3].z, edges[2].x, edges[2].y, edges[2].z)
+        self.line3d(edges[7].x, edges[7].y, edges[7].z, edges[6].x, edges[6].y, edges[6].z)
+        self.line3d(edges[5].x, edges[5].y, edges[5].z, edges[4].x, edges[4].y, edges[4].z)
+
+    def _flush(self):
+            if self.vertexCount == 0:
+                return
+            Render.set_shader(self.shader)
+            self.shader.set_matrix4fv("uView", glm.value_ptr(Render.matrix[VIEW_MATRIX]))
+            self.shader.set_matrix4fv("uProjection", glm.value_ptr(Render.matrix[PROJECTION_MATRIX]))
+            self.shader.set_matrix4fv("uModel", glm.value_ptr(Render.matrix[MODEL_MATRIX]))
+            
+            glBindBuffer(GL_ARRAY_BUFFER, self.vbo)
+            glBufferSubData(GL_ARRAY_BUFFER, 0, self.count * 4 , np.array(self.vertices, dtype=np.float32))
+            glBindVertexArray(self.vao)
+            glDrawArrays(GL_LINES, 0, self.vertexCount)
+            self.count = 0
+            self.vertexCount = 0
+            
+
 
 
     def compute_outcode(self, x, y):
@@ -302,6 +448,11 @@ class FillBatch(Batch):
             self.vertex3f(x1, y1, self.depth)
             self.vertex3f(x2, y2, self.depth)
 
+    def triangle_3d (self, v1, v2, v3):
+        self.vertex3f(v1.x, v1.y, v1.z)
+        self.vertex3f(v2.x, v2.y, v2.z)
+        self.vertex3f(v3.x, v3.y, v3.z)
+
     def rectangle(self, x, y, width, height):
         self.triangle2d(x, y, x + width, y, x + width, y + height)
         self.triangle2d(x, y, x, y + height, x + width, y + height)
@@ -347,12 +498,18 @@ class FillBatch(Batch):
             self.triangle2d(inner_x1, inner_y1, outer_x1, outer_y1, outer_x2, outer_y2)
             self.triangle2d(inner_x1, inner_y1, outer_x2, outer_y2, inner_x2, inner_y2)
 
-    def render(self):
+
+
+
+
+
+    def _flush(self):
         if self.vertexCount == 0:
             return
-        Render.set_material(self.material2D)
-        self.material2D.shader.set_matrix4fv("uView", glm.value_ptr(Render.matrix[VIEW_MATRIX]))
-        self.material2D.shader.set_matrix4fv("uProjection", glm.value_ptr(Render.matrix[PROJECTION_MATRIX]))
+        Render.set_shader(self.shader)
+        self.shader.set_matrix4fv("uView", glm.value_ptr(Render.matrix[VIEW_MATRIX]))
+        self.shader.set_matrix4fv("uProjection", glm.value_ptr(Render.matrix[PROJECTION_MATRIX]))
+        self.shader.set_matrix4fv("uModel", glm.value_ptr(Render.matrix[MODEL_MATRIX]))
         glBindBuffer(GL_ARRAY_BUFFER, self.vbo)
         glBufferSubData(GL_ARRAY_BUFFER, 0, self.count * 4, np.array(self.vertices, dtype=np.float32))
         glBindVertexArray(self.vao)

@@ -20,12 +20,14 @@ class Input:
     last_x = 0
     last_y = 0
     last_z = 0
+    is_any_key_down = False
 
     @staticmethod
-    def set_key_state(key, state):
+    def set_key_state(key, state,chars):
         Input.current_key_state[key] = state
         Input.last_key = key
-        Input.last_char = str(key)  
+        Input.last_char = chars
+        Input.is_any_key_down = (state == True)
 
     @staticmethod
     def set_mouse_state(button, state):
@@ -55,6 +57,9 @@ class Input:
         Input.previous_key_state = Input.current_key_state[:]
         Input.mouse.dx = 0
         Input.mouse.dy = 0
+        Input.mouse.wheel_delta = 0
+        Input.is_any_key_down = False
+        Input.last_key = 0
 
     @staticmethod
     def keyboard_check(key):
@@ -75,6 +80,20 @@ class Input:
     @staticmethod
     def keyboard_released(key):
         return Input.previous_key_state[key] and not Input.current_key_state[key]
+    
+    @staticmethod
+    def keyboard_last_char():
+        return Input.last_char
+    
+    @staticmethod
+    def keyboard_last_key():
+        return Input.last_key
+
+
+    @staticmethod
+    def keyboard_any():
+        return Input.is_any_key_down
+
 
     @staticmethod
     def mouse_check(button):
