@@ -87,6 +87,7 @@ class Gui:
             Gui.line.render()
             Gui.font.render()
             Gui.ID = 0
+
             
             
 
@@ -122,6 +123,7 @@ class Gui:
                 'visible': True,
                 'id': ID
             }
+
             window = Gui.windows[ID]
             Gui.window = window
             Gui.fill.set_color(WHITE)
@@ -161,6 +163,8 @@ class Gui:
             if (OnBar and Input.mouse_pressed(0)):
                 Gui.isDragging = ID
 
+
+                
            
      
             if title:
@@ -420,14 +424,16 @@ class Gui:
                 Gui.FocusId = Gui.ID-1
                 Gui.fill.set_color(Gui.theme.backgroundColor)
                 Gui.font.set_color(Gui.theme.fontOverColor)
+                Render.set_cursor(Render.cursor_hand)
             else:
                 Gui.fill.set_color(Gui.theme.backgroundColorOff)
                 Gui.font.set_color(Gui.theme.fontColor)
+
             if isOver and Input.mouse_pressed(0):
                 isChecked = not isChecked
                 Gui.FocusId = Gui.ID-1
                 isPressed = True
-                Render.set_cursor("hand")
+                
             
                 
             
@@ -478,6 +484,7 @@ class Gui:
     
             if isOver:
                 Gui.fill.set_color(Gui.theme.sliderFillColor)
+                Render.set_cursor(Render.cursor_hand)
             else:
                 Gui.fill.set_color(Gui.theme.sliderFillColorOff)
 
@@ -491,6 +498,7 @@ class Gui:
             if isInBound and Input.mouse_down(0):
                 new_value = (mouse_x - X) / WIDTH * (max_value - min_value) + min_value
                 value = max(min(new_value, max_value), min_value)  
+                
 
             return value
 

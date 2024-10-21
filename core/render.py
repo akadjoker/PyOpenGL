@@ -68,7 +68,7 @@ class Render:
     view_port_box = Rectangle(0, 0, 1, 1)
     blend = False
     blend_mode = BlendMode.NONE
-    set_cull_mode = CullMode.NONE
+    cull_mode = CullMode.NONE
     matrix=[]
     cull = False
     material = None
@@ -82,13 +82,11 @@ class Render:
     frustum = Frustum()
     clear_flag = GL_COLOR_BUFFER_BIT
     clear_color = BLACK
-    layers = [0] * 6
+    layers = []
     texture_assets = {}
     states = {}
-
-
     stack = []
-
+    shadows=[]
 
     defaultTexture = None
     defaultFont = None
@@ -107,7 +105,10 @@ class Render:
         Render.triangles = 0
         Render.programs = 0
         Render.vertices = 0
-        Render.layers = [0] * 6
+        Render.layers[0]= None
+        Render.layers[1]= None
+        Render.layers[2]= None
+        Render.layers[3]= None
 
             
     @staticmethod
@@ -128,6 +129,15 @@ class Render:
         Render.cursor_beam = glfw.create_standard_cursor(glfw.IBEAM_CURSOR)
         Render.cursor_cross = glfw.create_standard_cursor(glfw.CROSSHAIR_CURSOR)
         Render.current_cursor = None
+        Render.layers.append(None)
+        Render.layers.append(None)
+        Render.layers.append(None)
+        Render.layers.append(None)
+        Render.shadows.append(0)
+        Render.shadows.append(0)
+        Render.shadows.append(0)
+        Render.shadows.append(0)
+
         
 
     @staticmethod
@@ -165,15 +175,34 @@ class Render:
         Render.set_viewport(Render.view_port_box.x, Render.view_port_box.y, Render.view_port_box.width, Render.view_port_box.height)
 
 
+    @staticmethod
+    def set_shadow_texture(id,layer):
+        if layer < 0 or layer > 3:
+            print(f"Layer {layer} not found")
+            return
+        Render.shadows[layer] = id
     
     @staticmethod
     def get_shader(name):
-        material = Render.shaders.get(name)
-        if material == None:
+        shader = Render.shaders.get(name)
+        if shader == None:
             print(f"Shader {name} not found")
             exit(1)
-        return material
+        return shader
     
+    @staticmethod
+    def get_cursor():
+        return Render.current_cursor
+    
+    @staticmethod
+    def is_cursor(c):
+        if Render.current_cursor==None:
+            return False
+        return Render.current_cursor == Render.cursor_hand
+ 
+        
+    
+
 
     @staticmethod
     def set_cursor(cursor):
@@ -182,17 +211,10 @@ class Render:
         if cursor == None:
             glfw.set_cursor(Render.window, Render.cursor_arrow)
             return 
-        
-        
+        if  Render.current_cursor == cursor:
+            return
         Render.current_cursor = cursor
-        if cursor == "hand":
-            glfw.set_cursor(Render.window, Render.cursor_hand)
-        elif cursor == "beam":
-            glfw.set_cursor(Render.window, Render.cursor_beam)
-        elif cursor == "cross":
-            glfw.set_cursor(Render.window, Render.cursor_cross)
-        else:
-            glfw.set_cursor(Render.window, cursor)
+        glfw.set_cursor(Render.window, cursor)
 
         
     @staticmethod
@@ -229,8 +251,8 @@ class Render:
 
     @staticmethod
     def set_texture(texture, layer):
-        if Render.layers[layer] == texture:
-            return
+        #if Render.layers[layer] == texture:
+        #    return
         
         glActiveTexture(GL_TEXTURE0 + layer)
         glBindTexture(GL_TEXTURE_2D, texture)
@@ -309,9 +331,9 @@ class Render:
 
     @staticmethod
     def set_cull_mode(mode):
-        if Render.set_cull_mode == mode:
+        if Render.cull_mode == mode:
             return
-        Render.set_cull_mode = mode
+        Render.cull_mode = mode
         if mode == CullMode.Back:
             glCullFace(GL_BACK)
         elif mode == CullMode.Front:
@@ -637,6 +659,8 @@ class DepthTexture(Texture):
         self.isBegin = False
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
         Render.restore()
+        Render.set_shadow_texture(self.id,0)
+
 
     def release(self):
         super().release()
@@ -695,9 +719,10 @@ class DepthBuffer:
         if self.isBegin:
             return
         self.isBegin = True
+        Render.save()
+        Render.set_viewport(0, 0, self.width, self.height)
+        Render.set_clear_color(0.0, 0.0, 0.0)
         glBindFramebuffer(GL_FRAMEBUFFER, self.frame_buffer)
-        glViewport(0, 0, self.width, self.height)
-        glClearColor(0.0, 0.0, 0.0, 1.0)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
     
 
@@ -706,7 +731,9 @@ class DepthBuffer:
             return
         self.isBegin = False
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
-        glBindTexture(GL_TEXTURE_2D, 0)
+        Render.restore()
+        Render.shaders[0] = self.color
+        Render.shaders[1] = self.depth
 
     def release(self):
         glDeleteFramebuffers(1, [self.frame_buffer])

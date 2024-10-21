@@ -111,7 +111,9 @@ class Shader:
                 self.flags |= MAT_PROJECTION
             if 'mpv' in self.uniforms:
                 self.flags |= MAT_MPV
-
+            
+            for uniform in self.uniforms:
+                print(f"Uniform {uniform} at {self.uniforms[uniform]}")
             
 
     def set_matrix4fv(self, name, matrix):
@@ -125,23 +127,23 @@ class Shader:
         location = self.uniforms.get(name)
         if location is not None:
             glUniform1f(location, value)
-        #else:
-        #    print(f"Uniform '{name}' not found.")
+        else:
+            print(f"Uniform '{name}' not found.")
     
     def set_int(self, name, value):
         location = self.uniforms.get(name)
         if location is not None:
             glUniform1i(location, value)
-        #else:
-        #    print(f"Uniform '{name}' not found.")
+        else:
+            print(f"Uniform '{name}' not found.")
 
 
     def set_vector2f(self, name, value):
         location = self.uniforms.get(name)
         if location is not None:
             glUniform2f(location, value[0], value[1])
-        #else:
-        #    print(f"Uniform '{name}' not found.")
+        else:
+            print(f"Uniform '{name}' not found.")
     
     def set_vector3f(self, name, value):
         location = self.uniforms.get(name)

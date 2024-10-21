@@ -31,8 +31,7 @@ class Material:
     def apply(self):
         for layer in range(len(self.textures)):
             Render.set_texture(self.textures[layer].id, layer)
-
-
+        
 
 class DefaultShader(Shader):
     def __init__(self):
@@ -222,7 +221,7 @@ class DepthShader(Shader):
        ///     fragDepth = gl_FragCoord.z;
 
 
-         //#FragColor = vec4(vec3(gl_FragCoord.z), 1.0);
+         FragColor = vec4(vec3(gl_FragCoord.z), 1.0);
         
             }
         """
@@ -932,7 +931,7 @@ class SingleShadowShader(Shader):
   
         vertex="""#version 330 core
 
-        layout(location = 0) in vec3 aPos;
+        layout(location = 0) in vec3 aPosition;
         layout(location = 1) in vec2 aTexCoord;
         layout(location = 2) in vec3 aNormal;
 
@@ -940,54 +939,196 @@ class SingleShadowShader(Shader):
         uniform mat4 uProjection;
         uniform mat4 uView;
         uniform mat4 uModel;
+        uniform mat4 uLightSpaceMatrix;
 
         out vec2 TexCoords;
         out vec3 Normal;
         out vec3 FragPos;
+        out vec4 lightSpace ;
+
         void main()
         {
-            FragPos = vec3(uModel * vec4(aPos, 1.0));
+            FragPos = (uModel * vec4(aPosition, 1.0)).xyz;
+            gl_Position = uProjection * uView *  vec4(FragPos, 1.0);
+            lightSpace = uLightSpaceMatrix *  vec4(FragPos, 1.0);
             TexCoords = aTexCoord;
             Normal = mat3(transpose(inverse(uModel))) * aNormal;  
-            gl_Position =  uProjection * uView  *  vec4(FragPos, 1.0);
         }
         """
 
         fragment="""#version 330 core
+
+
         out vec4 FragColor;
 
-      
+        in vec4 lightSpace;
         in vec2 TexCoords;
         in vec3 Normal;
         in vec3 FragPos;
+
         uniform sampler2D diffuseMap;
+        uniform sampler2D shadowMap;
+        uniform vec3 lightPos;
+        uniform vec3 viewPos;
 
-        
 
-        uniform vec3 ambient;
+    
+        float CalculateShadowPCF(vec3 lightDir, vec3 normal,float cosTheta,float splitDistance);
 
-        
-      
+        float CalculateShadowPoissonDisk(vec3 lightDir, vec3 normal,float cosTheta, float splitDistance);
 
         void main()
         {
-            vec3 diffuseColor = texture(diffuseMap, TexCoords).rgb;
 
-           
-            vec3 result = diffuseColor * ambient;
+            vec3 color = texture(diffuseMap, TexCoords).rgb;
+            vec3 normal = normalize(Normal);
+            vec3 lightColor = vec3(0.8);
+            
+            // Ambient
+            vec3 ambient = 0.2 * lightColor;
+            
+            // Direção da luz
+            vec3 lightDir = normalize(lightPos - FragPos);
+            
+            // Diffuse
+            float cosTheta = max(dot(lightDir, normal), 0.0);
+            vec3 diffuse = cosTheta * lightColor;
+            
+            // Specular
+            vec3 viewDir = normalize(viewPos - FragPos);
+            vec3 reflectDir = reflect(-lightDir, normal);
+            
+            float spec = 0.0;
+            vec3 halfwayDir = normalize(lightDir + viewDir);  
+            spec = pow(max(dot(normal, halfwayDir), 0.0), 256.0);
+            vec3 specular = spec * lightColor;
+            
+           //float shadow = CalculateShadowPCF( lightDir,normal, cosTheta, 0.1);
+           float shadow =CalculateShadowPoissonDisk(lightDir,normal, cosTheta, 0.1);
+            
 
+            
+            vec3 lighting = (ambient + (1.0 - shadow) * (diffuse + specular)) * color; 
 
+            //vec3 lighting = (ambient + diffuse + specular) * color;
 
-            //result = CalcColor( norm, viewDir, diffuseColor);
-
-
-            FragColor = vec4(result, 1.0);
+ 
+            FragColor = vec4(lighting, 1.0);
         }
 
-      
+ 
+        float dynamicBias(vec3 normal, vec3 lightDir, float cascadeSplitDistance, float baseBias) 
+        {
+            // Calcula o ângulo entre a direção da luz e a superfície
+            float bias = max(baseBias * (1.0 - dot(normal, lightDir)), baseBias);
+
+            // Reduz o bias com base na distância da cascata (splitDistance)
+            bias *= 1.0 / (cascadeSplitDistance * 0.5);
+
+            // Limitar o bias para evitar que se torne muito pequeno ou muito grande
+            bias = clamp(bias, baseBias, baseBias * 10.0);
+
+            return bias;
+        }
+
+       float CalculateShadowPCF(vec3 lightDir,vec3 normal,float cosTheta,float splitDistance)
+       {
+            vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
+            
+            vec3 projCoords = (lightSpace.xyz / lightSpace.w) * 0.5 + 0.5;
+            
+
+            float currentDepth = projCoords.z;
+
+            // keep the shadow at 0.0 when outside the far_plane region of the light's frustum.
+            if (currentDepth > 1.0)
+            {
+                return 0.0;
+            }
+
+            float bias = dynamicBias(normal, lightDir, splitDistance, 0.005);
+            // float bias = max(0.05 * (1.0 - cosTheta), 0.005); 
+//            float bias = max(0.05 * (1.0 - dot(normal, lightDir)), 0.005);
+    //        float bias = max(0.05 * (1.0 - dot(normal, lightDir)), 0.01);  // ou 0.02
+
+    //        const float biasModifier = 0.5f;
+  //          bias *= 1 / (0.9 * biasModifier);
+    
+
+            float shadow = 0.0;
+            for (int x = -2; x <= 2; ++x)
+            {
+                for (int y = -2; y <= 2; ++y)
+                {
+                    vec2 texel = projCoords.xy + vec2(x, y) * texelSize;
+                    float pcfDepth = texture(shadowMap, texel).r;
+                    shadow += (currentDepth - bias) > pcfDepth ? 1.0 : 0.0;
+                }
+            }
+            shadow /= 25.0;  // Normaliza para 5x5 amostras
+
+            return shadow;
+       }
+
+
+
+        float CalculateShadowPoissonDisk(vec3 lightDir, vec3 normal, float cosTheta, float splitDistance)
+        {
+            // Calcula o tamanho do texel da textura de sombra
+            vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
+
+            // Projeção das coordenadas no espaço de luz
+            vec3 projCoords = (lightSpace.xyz / lightSpace.w) * 0.5 + 0.5;
+
+            // Profundidade atual do fragmento no espaço de luz
+            float currentDepth = projCoords.z;
+
+            // Se a profundidade for maior que 1.0, está fora do frustum da luz
+            if (currentDepth > 1.0)
+            {
+                return 0.0;
+            }
+
+            // Calcula o bias dinâmico
+            float bias = dynamicBias(normal, lightDir, splitDistance, 0.005);
+
+
+
+
+            float shadow = 0.0;
+
+            //  amostras do Poisson Disk
+            const int samples = 16;
+            const vec2 poissonDisk[16] = vec2[](
+                vec2(-0.94201624, -0.39906216), vec2(0.94558609, -0.76890725),                vec2(-0.094184101, -0.92938870), vec2(0.34495938, 0.29387760),
+                vec2(-0.91588581, 0.45771432), vec2(-0.81544232, -0.87912464),                vec2(-0.38277543, 0.27676845), vec2(0.97484398, 0.75648379),
+                vec2(0.44323325, -0.97511554), vec2(0.53742981, -0.47373420),                vec2(-0.26496911, -0.41893023), vec2(0.79197514, 0.19090188),
+                vec2(-0.24188840, 0.99706507), vec2(-0.81409955, 0.91437590),                vec2(0.19984126, 0.78641367), vec2(0.14383161, -0.14100790)
+            );
+
+            // Loop para aplicar Poisson Disk Sampling nas coordenadas de sombra
+            for (int i = 0; i < samples; ++i)
+            {
+                // Calcula o deslocamento usando Poisson Disk e o tamanho do texel
+                vec2 offset = poissonDisk[i] * texelSize;
+
+                // Amostra a profundidade do shadow map com o deslocamento
+                float pcfDepth = texture(shadowMap, projCoords.xy + offset).r;
+
+                // Verifica se o fragmento está na sombra
+                shadow += (currentDepth - bias) > pcfDepth ? 1.0 : 0.0;
+            }
+
+            // Normaliza o valor da sombra com base no número de amostras
+            shadow /= float(samples);
+
+            return shadow;
+        }
+
      
         """
         self.create_shader(vertex,fragment)
+    
        
        
         
