@@ -58,10 +58,10 @@ Render.set_blend_mode(BlendMode.Normal)
 Render.set_clear_color(0.2,0.2,0.6)
 Render.set_clear_mode(True)
 
-Render.add_light(SpotLightData())
+light = scene.create_spot_light(glm.vec3(0.0, 0.0, 0.0), glm.vec3(0.0, 0.0, 0.0), glm.vec3(0.0, 0.0, 0.0))
 
 
-shader = SpotShader()
+shader =  light.shader
 
 camera = Camera(45.0,core.width / core.height)
 camera.set_perspective(45.0, 16.0 / 9.0, 0.25, 4000.0)
@@ -142,7 +142,7 @@ while core.run():
     scene.update()
 
     pick = False
-    light = Render.get_light(0)
+
     light.position  = camera.get_local_position()
     light.direction = camera.get_front()
 
@@ -185,7 +185,7 @@ while core.run():
     Gui.end()
 
 
-    light.camera = camera.get_world_position()
+
 
     Gui.begin(1, 10,40, 300, 250, options={"background": True,'dragging': True, "bar": True, "title": "Light"})
     

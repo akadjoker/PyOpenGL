@@ -58,10 +58,10 @@ Render.set_blend_mode(BlendMode.Normal)
 Render.set_clear_color(0.2,0.2,0.6)
 Render.set_clear_mode(True)
 
-Render.add_light(PointLightData())
+light = scene.create_point_light( glm.vec3(1.0, 1.0, 1.0), glm.vec3(0.0, 1.0, 0.0) )
 
 
-shader = PointShader()
+shader = light.shader
 
 camera = Camera(45.0,core.width / core.height)
 camera.set_perspective(45.0, 16.0 / 9.0, 0.25, 4000.0)
@@ -141,7 +141,7 @@ while core.run():
     scene.update()
 
     pick = False
-    light = Render.get_light(0)
+
 
     #ray = scene.camera_ray(Input.get_mouse_x(), Input.get_mouse_y())
     ray = scene.unproject(Input.get_mouse_x(), Input.get_mouse_y())

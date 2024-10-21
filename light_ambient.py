@@ -58,10 +58,13 @@ Render.set_blend_mode(BlendMode.Normal)
 Render.set_clear_color(0.2,0.2,0.6)
 Render.set_clear_mode(True)
 
-Render.add_light(AmbientLightData())
+light =  scene.create_ambient_light(glm.vec3(0.1, 0.1, 0.1))
+#scene.create_directional_light(glm.vec3(0.01, 0.01, 0.01), glm.vec3(0.0, -0.8, 0.4))
+#scene.create_ambient_light(glm.vec3(0.2, 0.2, 0.2))
+shader = light.shader
 
 
-shader = AmbientShader()
+
 
 camera = Camera(45.0,core.width / core.height)
 camera.set_perspective(45.0, 16.0 / 9.0, 0.25, 4000.0)
@@ -138,7 +141,7 @@ while core.run():
     scene.update()
 
     pick = False
-    light = Render.get_light(0)
+    
 
 
 

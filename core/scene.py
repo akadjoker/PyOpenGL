@@ -650,6 +650,14 @@ class Scene:
     def render(self):
         Render.set_matrix(VIEW_MATRIX, self.mainCamera.get_view_matrix())
         Render.set_matrix(PROJECTION_MATRIX, self.mainCamera.get_projection_matrix())
+        for light in self.lights:
+            if not light.enable:
+                continue
+            light.camera = self.mainCamera.get_world_position()
+            Render.set_shader(light.shader)
+            light.shader.apply()
+            light.update()
+
         for node in self.nodes:
             if node.visible:
                 box = node.get_bounding_box()
