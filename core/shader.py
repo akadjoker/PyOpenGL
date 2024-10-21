@@ -13,13 +13,18 @@ class Attribute(Enum):
     TANGENT = 13
     BITANGENT = 14
 
+MAT_PROJECTION = 1
+MAT_VIEW = 2
+MAT_MODEL = 4
+MAT_MPV = 8
 
 class Shader:
     def __init__(self):
         self.program = glCreateProgram()
         self.uniforms = {}
         self.attributes=[]
-
+        self.flags = 0
+        
     def use(self):
         glUseProgram(self.program)
     
@@ -97,7 +102,17 @@ class Shader:
                 name = uniform_name.decode()
                 uniform_location = glGetUniformLocation(program, uniform_name)
                 self.uniforms[name] = uniform_location
-            #print(self.uniforms)
+
+            if 'uModel' in self.uniforms:
+                self.flags |= MAT_MODEL
+            if 'uView' in self.uniforms:
+                self.flags |= MAT_VIEW
+            if 'uProjection' in self.uniforms:
+                self.flags |= MAT_PROJECTION
+            if 'mpv' in self.uniforms:
+                self.flags |= MAT_MPV
+
+            
 
     def set_matrix4fv(self, name, matrix):
         location = self.uniforms.get(name)
@@ -143,4 +158,7 @@ class Shader:
         #    print(f"Uniform '{name}' not found.")
 
 
+
+    def contains(self,mat):
+        return self.flags & mat
 

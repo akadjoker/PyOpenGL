@@ -1,5 +1,6 @@
 import glm
 import math
+from enum import Enum
 import numpy as np
 from OpenGL.GL import *
 from .core  import *
@@ -31,6 +32,231 @@ class Material:
         for layer in range(len(self.textures)):
             Render.set_texture(self.textures[layer].id, layer)
 
+
+
+class DefaultShader(Shader):
+    def __init__(self):
+        super().__init__()
+        self.attributes=[Attribute.POSITION3D,Attribute.TEXCOORD0,Attribute.COLOR4] 
+        vertex="""#version 330
+
+        layout(location = 0) in vec3 aPos;
+        layout(location = 1) in vec2 aTexCoord;
+        layout(location = 2) in vec4 aColor;
+
+        
+        uniform mat4 uProjection;
+        uniform mat4 uView;
+        uniform mat4 uModel;
+
+        out vec2 vTexCoord;
+        out vec4 vColor;
+        void main()
+        {
+
+            vColor = aColor;
+            vTexCoord = aTexCoord;
+            gl_Position =  uProjection * uView * uModel *  vec4(aPos, 1.0);
+        }
+        """
+
+        fragment="""#version 330
+        out vec4 fragColor;
+
+        in vec2 vTexCoord;
+        in vec4 vColor;
+        uniform sampler2D texture0;
+        void main()
+        {
+            fragColor =   texture(texture0, vTexCoord)  * vColor;
+        }
+        """
+        self.create_shader(vertex,fragment)
+
+
+class SkyboxShader(Shader):
+    def __init__(self):
+        super().__init__()
+        self.attributes=[Attribute.POSITION3D] 
+
+        vertex="""#version 330
+
+        layout(location = 0) in vec3 aPosition;
+
+
+        
+        uniform mat4 uProjection;
+        uniform mat4 uView;
+
+
+        out vec2 vTexCoord;
+       
+        void main()
+        {
+
+       
+            vTexCoord = aPosition;
+            mat4 view =mat4(mat3(uView));
+            vec4 pos = uProjection * view * vec4(aPosition, 1.0);
+            gl_Position = pos.xyww;
+        }
+        """
+
+        fragment="""#version 330
+        out vec4 fragColor;
+
+        in vec2 vTexCoord;
+
+        uniform samplerCube cubeTexture;
+        void main()
+        {
+            fragColor =   texture(cubeTexture, vTexCoord) ;
+        }
+        """
+        self.create_shader(vertex,fragment)
+
+
+
+
+class InstanceShader(Shader):
+    def __init__(self):
+        super().__init__()
+        self.attributes=[Attribute.POSITION3D,Attribute.TEXCOORD0,Attribute.POSITION3D] 
+
+        vertex="""#version 330
+
+    layout (location = 0) in vec3 aPosition;
+    layout (location = 1) in vec2 aTexCoord;
+    layout (location = 2) in vec3 aInstancePosition;
+
+    uniform mat4 uProjection;
+    uniform mat4 uView;
+    uniform mat4 uModel;
+    out vec2 TexCoord;
+
+
+
+    void main()
+    {
+        TexCoord = aTexCoord;
+        
+
+        gl_Position =  uProjection * uView * uModel * vec4(aPosition + aInstancePosition, 1.0);
+    }
+        """
+
+        fragment="""#version 330
+
+        in vec2 TexCoord;            
+        out vec4 FragColor;
+        uniform sampler2D uTexture0;
+
+        void main()
+        {
+            
+            vec4 texColor =  texture(uTexture0, TexCoord) ;
+            FragColor =texColor;
+
+        }
+        """
+        self.create_shader(vertex,fragment)
+
+
+
+
+class ScreenShader(Shader):
+    def __init__(self):
+        super().__init__()
+        self.attributes=[Attribute.POSITION2D] 
+
+        vertex="""#version 330
+
+            layout (location = 0) in vec2 aPosition;
+            out vec2 TexCoord;
+
+            void main() 
+            {
+                gl_Position = vec4(aPosition, 0.0, 1.0);
+                TexCoord = (aPosition + 1.0) / 2.0;
+            }
+        """
+
+        fragment="""#version 330
+
+            uniform sampler2D uTexture;
+            in vec2 TexCoord;
+            out vec4 FragColor;
+            void main() 
+            {
+                FragColor = texture(uTexture, TexCoord);
+            }
+        """
+        self.create_shader(vertex,fragment)
+
+class DepthShader(Shader):
+    def __init__(self):
+        super().__init__()
+        self.attributes=[Attribute.POSITION3D] 
+
+        vertex="""#version 330
+             layout (location = 0) in vec3 aPosition;
+            uniform mat4 uLightSpaceMatrix;
+            uniform mat4 uModel;
+    
+            void main()
+            {
+                
+                gl_Position  =  uLightSpaceMatrix *  uModel* vec4(aPosition, 1.0);
+
+            }
+
+        """
+
+        fragment="""#version 330
+           
+        //out float fragDepth;
+       out vec4 FragColor;
+
+        void main() 
+        {
+       ///     fragDepth = gl_FragCoord.z;
+
+
+         //#FragColor = vec4(vec3(gl_FragCoord.z), 1.0);
+        
+            }
+        """
+        self.create_shader(vertex,fragment)
+
+class DebugDepthShader(Shader):
+    def __init__(self):
+        super().__init__()
+        self.attributes=[Attribute.POSITION2D] 
+
+        vertex="""#version 330
+
+        layout (location = 0) in vec2 aPosition;
+        out vec2 TexCoord;
+
+        void main() 
+        {
+            gl_Position = vec4(aPosition, 0.0, 1.0);
+            TexCoord = (aPosition + 1.0) / 2.0;
+        }
+        """
+
+        fragment="""#version 330
+            uniform sampler2D uTexture;
+            in vec2 TexCoord;
+            out vec4 FragColor;
+            void main() 
+            {
+                    float depthValue = texture(uTexture, TexCoord).r;
+
+                    FragColor =  vec4(vec3(depthValue), 1.0);
+            }
+        """
+        self.create_shader(vertex,fragment)
 
 class PointShader(Shader):
     def __init__(self):
@@ -91,45 +317,6 @@ class SolidShader(Shader):
         self.create_shader(vertex,fragment)
         print("Created Shader")
 
-class DefaultShader(Shader):
-    def __init__(self):
-        super().__init__()
-        self.attributes=[Attribute.POSITION3D,Attribute.TEXCOORD0,Attribute.COLOR4] 
-
-        vertex="""#version 330
-
-        layout(location = 0) in vec3 aPos;
-        layout(location = 1) in vec2 aTexCoord;
-        layout(location = 2) in vec4 aColor;
-
-        
-        uniform mat4 uProjection;
-        uniform mat4 uView;
-        uniform mat4 uModel;
-
-        out vec2 vTexCoord;
-        out vec4 vColor;
-        void main()
-        {
-
-            vColor = aColor;
-            vTexCoord = aTexCoord;
-            gl_Position =  uProjection * uView * uModel *  vec4(aPos, 1.0);
-        }
-        """
-
-        fragment="""#version 330
-        out vec4 fragColor;
-
-        in vec2 vTexCoord;
-        in vec4 vColor;
-        uniform sampler2D texture0;
-        void main()
-        {
-            fragColor =   texture(texture0, vTexCoord)  * vColor;
-        }
-        """
-        self.create_shader(vertex,fragment)
 
 
 
@@ -734,6 +921,75 @@ class SpotShader(Shader):
        
 
 
+
+
+
+class SingleShadowShader(Shader):
+    def __init__(self):
+        super().__init__()
+        self.attributes=[Attribute.POSITION3D,Attribute.TEXCOORD0,Attribute.NORMAL] 
+
+  
+        vertex="""#version 330 core
+
+        layout(location = 0) in vec3 aPos;
+        layout(location = 1) in vec2 aTexCoord;
+        layout(location = 2) in vec3 aNormal;
+
+        
+        uniform mat4 uProjection;
+        uniform mat4 uView;
+        uniform mat4 uModel;
+
+        out vec2 TexCoords;
+        out vec3 Normal;
+        out vec3 FragPos;
+        void main()
+        {
+            FragPos = vec3(uModel * vec4(aPos, 1.0));
+            TexCoords = aTexCoord;
+            Normal = mat3(transpose(inverse(uModel))) * aNormal;  
+            gl_Position =  uProjection * uView  *  vec4(FragPos, 1.0);
+        }
+        """
+
+        fragment="""#version 330 core
+        out vec4 FragColor;
+
+      
+        in vec2 TexCoords;
+        in vec3 Normal;
+        in vec3 FragPos;
+        uniform sampler2D diffuseMap;
+
+        
+
+        uniform vec3 ambient;
+
+        
+      
+
+        void main()
+        {
+            vec3 diffuseColor = texture(diffuseMap, TexCoords).rgb;
+
+           
+            vec3 result = diffuseColor * ambient;
+
+
+
+            //result = CalcColor( norm, viewDir, diffuseColor);
+
+
+            FragColor = vec4(result, 1.0);
+        }
+
+      
+     
+        """
+        self.create_shader(vertex,fragment)
+       
+       
         
 
 

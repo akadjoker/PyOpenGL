@@ -45,6 +45,7 @@ class Input:
         Input.mouse.y = y
         Input.mouse.dx = (x - Input.last_x) / w  
         Input.mouse.dy = (y - Input.last_y) / h
+        
 
         Input.mouse.dx = max(-1, min(1, Input.mouse.dx))
         Input.mouse.dy = max(-1, min(1, Input.mouse.dy))

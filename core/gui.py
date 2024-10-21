@@ -51,8 +51,6 @@ class Gui:
         Y=0
         lastX=0
         lastY=0
-        WIDTH=0
-        HEIGHT=0
         isBegin = False
         visible = True
         isDragging = -1
