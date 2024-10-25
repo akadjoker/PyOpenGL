@@ -3,13 +3,14 @@ from core.core import *
 from core.mesh import *
 from core.builder import *
 from core.render import *
-from core.scene import Entity,Camera,CameraFPS,Scene
+from core.scene import Entity,Camera,CameraFPS,Scene,LensFlare
 from core.batch import *
 from core.font import Font
 from core.sprite import SpriteBatch
 from core.gui import Gui
 from core.input import Input
 from core.material import *
+from core.utils import UtilMath
 
 import sys
 import glm
@@ -24,6 +25,8 @@ pitch = 0.0  # Inicializa sem inclinação
 
 core = Core(SCREEN_WIDTH, SCREEN_HEIGHT, "OpenGL Simples Shadow")
 
+
+flaresTexture =Render.load_texture("assets/sprites.png","flares") 
 
 mainTexture =Render.load_texture("assets/brickwall_diffuse.jpg","brickwall")
 #Render.load_texture("assets/brickwall_specular.jpg","brickwall_specular")
@@ -81,7 +84,7 @@ quadrender = SingleRender()
 quadrender.init()
 
 camera = Camera(45.0,core.width / core.height)
-camera.set_perspective(45.0, 16.0 / 9.0, 0.25, 4000.0)
+camera.set_perspective(60.0, 16.0 / 9.0, 0.25, 4000.0)
 camera.translate(0.0, 10.5, 25.0)
 camera.rotate(pitch, yaw, 0.0)
 
@@ -106,12 +109,15 @@ model.add_mesh(cube)
 model.translate(0.0, 1.0, 0.0)
 
 
+lensFlare =LensFlare(flaresTexture)
+
 mouseSensitivity = 90
 
 
 
 Gui.init()
 lines = LinesBatch(1024*8)
+Render.linesBatch = lines
 position = glm.vec3(0.0, 5.0, 0.0)
 range = 100.0
 
@@ -124,7 +130,7 @@ while core.run():
 
   
 
-    speed = core.get_delta_time() * 125
+    speed =  1
 
     if Input.mouse_down(0) and not Gui.has_focus():
         yaw   += Input.get_mouse_delta_x()  *  mouseSensitivity
@@ -156,6 +162,8 @@ while core.run():
 
 
     scene.update()
+
+    
 
     near_plane = 0.1
     far_plane = 40.5
@@ -197,8 +205,9 @@ while core.run():
     glActiveTexture(GL_TEXTURE1)
     glBindTexture(GL_TEXTURE_2D, 0)
 
+    lensFlare.update(scene,lightPos,camera.get_local_position(),camera.get_local_rotation())
 
-
+  
 
 
 
@@ -219,6 +228,7 @@ while core.run():
 
     #cube.debug_transform(model.get_world_tform().matrix,lines,True,True,0.5)
 
+    lines.sphere(lightPos.x,lightPos.y,lightPos.z,0.4)
     lines.render() 
 
     #2d stuff
@@ -265,13 +275,17 @@ while core.run():
     Gui.render(core.width , core.height)
 
 
+
     if showQuad:
         Render.set_shader(screenShader)
         Render.set_texture(buffer.id, 0)
         quadrender.render(0.0,0.0,1.0,1.0)
 
-
-
+    Render.set_cull(False)
+    Render.set_depth_test(False)
+    Render.set_blend(True)
+    Render.set_blend_mode(BlendMode.Normal)
+    lensFlare.render()
 
 
     core.flip()

@@ -1913,22 +1913,20 @@ class FlareShader(Shader):
 
         vertex="""#version 330
 
+        layout(location = 0) in vec2 aPos;  
         layout (location = 1) in vec2 aTexCoord;
+        layout (location = 2) in vec4 aColor;
+        uniform mat4 uOrthoMatrix;
 
         out vec2 TexCoords;
-
-        uniform vec2 elementPos;    // Posição do flare em NDC, calculada no código principal
-        uniform float elementScale;
+        out vec4 color;
 
         void main()
         {
           
-            vec2 scaledPos = aPos * elementScale;
-            vec2 screenPos = elementPos + scaledPos;
-
-            // `screenPos` em NDC,  Normalized Device Coordinates
-            gl_Position = vec4(screenPos, 0.0, 1.0);
+            gl_Position = uOrthoMatrix * vec4(aPos, 0.0, 1.0);
             TexCoords = aTexCoord;
+            color = aColor;
         }
         """
 
@@ -1936,18 +1934,18 @@ class FlareShader(Shader):
 
 
             in vec2 TexCoords;
+            in vec4 color;
             out vec4 FragColor;
 
-            uniform sampler2D flareTexture;  
-            uniform vec4 elementColor;      
+            uniform sampler2D image;  
+            
 
             void main()
             {
-
-                vec4 texColor = texture(flareTexture, TexCoords);
-                FragColor = elementColor * texColor;
+                vec4 texColor = texture(image, TexCoords);
+                FragColor = texColor * color;
             }
         """
         self.create_shader(vertex,fragment)
 
-        self.set_vector4f("elementColor",glm.vec4(1.0,1.0,1.0))
+  

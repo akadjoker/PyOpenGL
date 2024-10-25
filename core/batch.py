@@ -148,6 +148,11 @@ class LinesBatch(Batch):
         self.line2d(x1, y1, x2, y2)
         self.line2d(x2, y2, x0, y0)
 
+    def draw_triangle3D(self, v1, v2, v3):
+        self.line3dv(v1, v2)
+        self.line3dv(v2, v3)
+        self.line3dv(v3, v1)
+
     def rectangle(self, x, y, width, height):
         self.triangle2d(x + width, y + height, x + width, y, x, y)
         self.triangle2d(x, y, x, y + height, x + width, y + height)

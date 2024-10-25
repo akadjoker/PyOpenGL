@@ -3,7 +3,7 @@ import numpy as np
 from OpenGL.GL import *
 from .core  import *
 from .material import *
-from .utils import Rectangle,BoundingBox,Plane3D
+from .utils import Rectangle,BoundingBox,Plane3D,UtilMath
 import glm
 import math
 
@@ -320,7 +320,24 @@ class Mesh:
                  batch.line3dv(v1_transformed, v1_transformed + n1_transformed)
                  batch.line3dv(v2_transformed, v2_transformed + n2_transformed)
 
+    def ray_intersects(self, ray,matrix):
+        if not self.indices or not self.vertices:
+            return False
 
+        for i in range(0, len(self.indices), 3):
+            i0, i1, i2 = self.indices[i], self.indices[i+1], self.indices[i+2]
+            v0 = glm.vec3(self.vertices[i0*3], self.vertices[i0*3+1], self.vertices[i0*3+2])
+            v1 = glm.vec3(self.vertices[i1*3], self.vertices[i1*3+1], self.vertices[i1*3+2])
+            v2 = glm.vec3(self.vertices[i2*3], self.vertices[i2*3+1], self.vertices[i2*3+2])
+            v0_transformed = glm.vec3(matrix * glm.vec4(v0, 1.0))
+            v1_transformed = glm.vec3(matrix * glm.vec4(v1, 1.0))
+            v2_transformed = glm.vec3(matrix * glm.vec4(v2, 1.0))
+            result, t = UtilMath.ray_intersect_triangle(ray.origin, ray.direction, v0_transformed, v1_transformed, v2_transformed)
+            if result:
+                #Render.linesBatch.draw_triangle3D(v0_transformed, v1_transformed, v2_transformed)
+                return True
+
+        return False
 
     def recalculate_normals(self, smooth=True, angle_weighted=False):
         if not self.vertices or not self.indices:

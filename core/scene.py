@@ -2,7 +2,7 @@
 import glm
 import math
 from core.render import *
-from core.utils import BoundingBox, Plane3D, Ray3D, Frustum
+from core.utils import BoundingBox, Plane3D, Ray3D, Frustum , UtilMath
 from core.builder import *
 from core.material import *
 from core.shader import *
@@ -129,6 +129,10 @@ class Entity:
             self.set_local_tform(t)
 
     # Métodos para obter transformações locais
+    def get_local_rotation_vector(self):
+        euler_angles = glm.eulerAngles(self.local_rot)
+        euler_angles_degrees = glm.degrees(euler_angles)
+        return euler_angles
 
     def get_local_x(self):
         return self.local_pos.x
@@ -178,6 +182,7 @@ class Entity:
         if self._parent:
             return self._parent.get_world_rotation() * self.local_rot
         return self.local_rot
+    
 
     def get_world_tform(self):
         if self.invalid & self.INVALID_WORLDTFORM:
@@ -402,6 +407,19 @@ class Model (Entity):
         self.materials=[]
         self.numMaterials = 0
     
+    def ray_intersects(self, ray):
+        matrix = self.get_world_tform().matrix
+        self.boxTransform = self.box.transform( matrix )
+        if not ray.intersects_box(self.boxTransform) :
+            return False
+        for mesh in self.meshes:
+            box = mesh.box.transform(matrix)
+            if ray.intersects_box(box):
+                #Render.linesBatch.draw_bounding_box(box, RED)
+                if mesh.ray_intersects(ray, matrix):
+                    return True
+        return False
+    
 
     def add_material(self, material):
         self.materials.append(material)
@@ -598,6 +616,14 @@ class Scene:
         self.mainCamera = None
         self.lights = []
 
+  
+    def ray_intersects(self, ray):
+        for node in self.nodes:
+            if node.ray_intersects(ray):
+                return True
+
+        return False
+  
 
     def create_ambient_light(self,color):
         light = AmbientLightData()
@@ -743,36 +769,276 @@ class Scene:
 
 
 class LensFlare:
-    def __init__(self, light_pos_world, flare_textures):
-        self.light_pos_world  = light_pos_world
-        self.flare_textures = flare_textures
-        self.offsets = [-0.6, -0.4, -0.2, 0.0, 0.2, 0.4, 0.6]
-        self.scales = [0.2, 0.15, 0.25, 0.5, 0.3, 0.4, 0.2]
-        self.colors = [
-            glm.vec3(1.0, 0.8, 0.6), glm.vec3(1.0, 0.6, 0.6), glm.vec3(0.8, 0.7, 1.0),
-            glm.vec3(1.0, 1.0, 1.0), glm.vec3(0.6, 0.8, 1.0), glm.vec3(0.7, 1.0, 0.6), glm.vec3(1.0, 0.9, 0.5)
-        ]
+    def __init__(self, texture):
+        self.flares = 8
+        self.texture = texture
+        self.VBO =0
+        self.VAO =0
+        self.VAO = glGenVertexArrays(1)
+        self.VBO = glGenBuffers(1)
+        self.stride = 2 + 2 + 4  # 2 para posição, 2 para textura , 4 para cor
+        self.vertices = [0.0] * (100 * self.stride)
+        self.total = 0
+        self.count =0
+        self.vertexIndex =0
+        self.width_tex =texture.width
+        self.height_tex=texture.height
+        self.occluded = False 
+        self.tu =0
+        self.tv =0
+        self.red =0
+        self.green =0
+        self.blue =0
+        self.alpha =0
+        self.viewAngle = 0.0
+        self.borderLimit=0
+        self.cameraForward = glm.vec3(0.0, 0.0, 1.0)
+        self.cameraPosition = glm.vec3(0.0, 0.0, 0.0)
+        self.position = glm.vec3(0.0, 0.0, 1.0)
+        self.burnClip = Rectangle(185, 423, 4, 4)
+        self.clips=[]
+        self.clips.append(Rectangle(128, 236, 128, 128))#sun
+        self.clips.append(Rectangle(256, 411, 64, 64))
+        self.clips.append(Rectangle(256, 347, 64, 64))
+        self.clips.append(Rectangle(256, 283, 64, 64))
+        self.clips.append(Rectangle(256, 219, 64, 64))
+        self.clips.append(Rectangle(238, 155, 64, 64))
+        self.clips.append(Rectangle(238, 155, 64, 64))
 
-    def calculate_screen_position(self, view_matrix, projection_matrix):
-        light_pos_view = view_matrix * glm.vec4(self.light_pos_world, 1.0)
-        light_pos_clip = projection_matrix * light_pos_view
-        light_pos_ndc = glm.vec3(light_pos_clip) / light_pos_clip.w
-        light_pos_screen = glm.vec2(light_pos_ndc.x * 0.5 + 0.5, light_pos_ndc.y * 0.5 + 0.5)
-        return light_pos_screen
-
-    def render(self, view_matrix, projection_matrix):
-        light_pos_screen = self.calculate_screen_position(view_matrix, projection_matrix)
-        screen_center = glm.vec2(0.5, 0.5)
-        flare_dir = light_pos_screen - screen_center
-        for i, texture in enumerate(self.flare_textures):
-            element_pos = screen_center + flare_dir * self.offsets[i]
-            element_scale = self.scales[i]
-            element_color = self.colors[i]
-            self.render_flare_element(texture, element_pos, element_scale, element_color)
+        self.clips.append(Rectangle(284, 475, 28, 28))
+        self.clips.append(Rectangle(302, 91, 27, 26))
 
 
-    def render_flare_element(self, texture, position, scale, color):
-        x, y = (position[0] * 2 - 1), (position[1] * 2 - 1)
-        size = scale
+
+
+        glBindVertexArray(self.VAO)
+        glBindBuffer(GL_ARRAY_BUFFER, self.VBO)
+        glBufferData(GL_ARRAY_BUFFER, len(self.vertices) * 4, None,  GL_STATIC_DRAW)
+        
+        glEnableVertexAttribArray(0)
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, self.stride * 4, None)
+        
+        glEnableVertexAttribArray(1)
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, self.stride * 4, ctypes.c_void_p(8))
+
+        glEnableVertexAttribArray(2)
+        glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, self.stride * 4, ctypes.c_void_p(16))
+        
+        glBindBuffer(GL_ARRAY_BUFFER, 0)
+        glBindVertexArray(0)
+
+        self.flareShader = FlareShader()
+        self.view_matrix = None
+        self.projection_matrix = None
 
         
+
+        self.offsets = [-0.8,-0.6, -0.4, -0.2, 0.0, 0.2, 0.4, 0.6, 0.8 , 1.0]
+        self.scales = [0.2, 0.15, 0.25, 0.5,0.75,0.5, 0.3, 0.4, 0.2]
+        self.indexes = [0,4,1, 2,2, 3, 1, 5, 3,2,4,1,2,3]
+        self.colors = [
+            glm.vec3(1.0, 1.0, 1.0), glm.vec3(1.0, 0.6, 0.6), glm.vec3(1.0, 0.7, 1.0),
+            glm.vec3(1.0, 1.0, 1.0), glm.vec3(1.0, 0.8, 1.0), glm.vec3(0.7, 1.0, 0.6), glm.vec3(1.0, 0.9, 0.5),
+            glm.vec3(1.0, 1.0, 1.0), glm.vec3(1.0, 0.6, 0.6),
+        ]
+
+    def vertex2f(self, x, y):
+        self.vertices[self.count + 0] = x
+        self.vertices[self.count + 1] = y
+        self.vertices[self.count + 2] = self.tu
+        self.vertices[self.count + 3] = self.tv
+        self.vertices[self.count + 4] = self.red
+        self.vertices[self.count + 5] = self.green
+        self.vertices[self.count + 6] = self.blue
+        self.vertices[self.count + 7] = self.alpha
+
+        self.count += self.stride
+        self.vertexIndex += 1
+    def textCoords(self, x, y):
+        self.tu = x
+        self.tv = y
+
+
+
+    def draw_quad(self, x, y, s, src_x, src_y, src_width, src_height):
+
+
+        left = (2 * src_x + 1) / (2 * self.width_tex)
+        right = left + (src_width * 2 - 2) / (2 * self.width_tex)
+        top = (2 * src_y + 1) / (2 * self.height_tex)
+        bottom = top + (src_height * 2 - 2) / (2 * self.height_tex)
+        size = s*80
+
+        x1, y1 = x - size, y - size  # Esquerda cima
+        x2, y2 = x + size, y - size  # Direita cima
+        x3, y3 = x - size, y + size  # Esquerda baixo
+        x4, y4 = x + size, y + size  # Direita baixo
+
+        # Triângulo 1
+        self.textCoords(left, top)
+        self.vertex2f(x1, y1)  # Vértice 1 (esquerda cima)
+        
+        self.textCoords(right, top)
+        self.vertex2f(x2, y2)  # Vértice 2 (direita cima)
+
+        self.textCoords(left, bottom)
+        self.vertex2f(x3, y3)  # Vértice 3 (esquerda baixo)
+
+        # Triângulo 2
+        self.textCoords(right, top)
+        self.vertex2f(x2, y2)  # Vértice 2 (direita cima)
+
+        self.textCoords(right, bottom)
+        self.vertex2f(x4, y4)  # Vértice 4 (direita baixo)
+
+        self.textCoords(left, bottom)
+        self.vertex2f(x3, y3)  # Vértice 3 (esquerda baixo) - repetido
+
+        
+
+    def is_light_visible(self):
+        fov = 90.0
+        angle_deg = UtilMath.angle_between_camera_and_point(self.cameraPosition,  self.cameraForward, self.light_pos_world)
+        self.viewAngle =  angle_deg
+
+        if angle_deg <= fov / 2 or angle_deg >= 360 - fov / 2:
+            return True
+        else:
+            return False
+    
+    def calculate_burn_by_angle(self, angle_deg, min_angle, max_angle):
+        if angle_deg > max_angle:
+            return 0.0
+        if angle_deg < min_angle:
+            return 0.6
+        burn_factor = glm.mix(0.0, 0.6, (max_angle - angle_deg) / (max_angle - min_angle))
+        return burn_factor
+
+
+    def calculate_screen_position(self, view_matrix, projection_matrix):
+        light_pos_screen = glm.project(self.light_pos_world, view_matrix,projection_matrix, glm.vec4(0.0, 0.0, Render.width, Render.height))
+        return light_pos_screen
+
+    def update(self,scene,light_pos_world,cameraPosition,cameraForward):
+        ray_direction = glm.normalize(cameraPosition - light_pos_world)
+        ray = Ray3D(light_pos_world, ray_direction)
+        self.occluded = scene.ray_intersects (ray)
+        self.light_pos_world  = light_pos_world
+        self.cameraForward = cameraForward
+        self.cameraPosition = cameraPosition
+        self.view_matrix = Render.matrix[VIEW_MATRIX]
+        self.projection_matrix = Render.matrix[PROJECTION_MATRIX]
+
+    def calculate_fade(self, light_pos_screen, screen_width, screen_height, border_limit):
+        awayX = 0.0
+        if light_pos_screen.x < border_limit:
+            awayX = border_limit - light_pos_screen.x
+        elif light_pos_screen.x > screen_width - border_limit:
+            awayX = light_pos_screen.x - (screen_width - border_limit)
+        else:
+            awayX = 0.0
+        
+        # Calcular o afastamento no eixo Y
+        awayY = 0.0
+        if light_pos_screen.y < border_limit:
+            awayY = border_limit - light_pos_screen.y
+        elif light_pos_screen.y > screen_height - border_limit:
+            awayY = light_pos_screen.y - (screen_height - border_limit)
+        else:
+            awayY = 0.0
+        
+        # Determinar a maior distância (X ou Y)
+        away = max(awayX, awayY)
+        
+  
+        if away > border_limit:
+            away = border_limit
+
+        # quanto mais afastado, menor a intensidade
+        intensity = 1.0 - (away / border_limit)
+        
+
+        intensity = max(0.0, min(intensity, 1.0))
+        
+        return intensity
+ 
+
+    def render(self):
+        
+        if self.occluded:
+            return
+        light_pos_screen_3d = self.calculate_screen_position(self.view_matrix, self.projection_matrix)
+        
+        if  light_pos_screen_3d[2] <0.0:
+            return
+        light_pos_screen = glm.vec2(light_pos_screen_3d[0], light_pos_screen_3d[1])
+        screen_width  = Render.width
+        screen_height = Render.height
+        if light_pos_screen.x < 0.0 or light_pos_screen.x > screen_width or light_pos_screen.y < 0.0 or light_pos_screen.y > screen_height:
+            return
+        screen_center = glm.vec2(screen_width / 2.0,  screen_height / 2.0)
+        flare_direction = screen_center - light_pos_screen
+        self.count = 0
+        self.vertexIndex = 0
+        self.borderLimit=screen_width * 0.2  # Borda equivalente a 20% da largura do screen
+        #screen_width//2
+        fade_intensity = self.calculate_fade(light_pos_screen, screen_width, screen_height, self.borderLimit)
+
+
+
+        Render.set_shader(self.flareShader)
+        Render.set_blend(True)
+        Render.set_blend_mode(BlendMode.One)
+        ortho_matrix = glm.ortho(0.0, float(screen_width),0.0, float(screen_height), 0.0, 1.0)
+        self.flareShader.set_matrix("uOrthoMatrix", ortho_matrix)
+
+
+        Render.set_texture(self.texture.id,0)
+        if  self.is_light_visible():
+            burn_intensity = self.calculate_burn_by_angle(self.viewAngle, 0.0, 20.0) 
+            if burn_intensity > 0:
+                quad_size = 8
+                
+                quad_opacity = glm.mix(0.0, 1.0,  burn_intensity)
+                quad_color = glm.vec3(0.8, 0.8, 0.8) * quad_opacity 
+                self.set_alpha(quad_opacity)
+                self.set_color(quad_color)
+                self.draw_quad(screen_center.x,screen_center.y, quad_size, self.burnClip.x, self.burnClip.y, self.burnClip.width, self.burnClip.height)                                                                                                            
+
+            clip = self.clips[0]
+            color = self.colors[0]# * fade_intensity
+            self.render_flare_element(light_pos_screen.x,light_pos_screen.y, self.scales[0],  color,fade_intensity, clip)
+
+            for i in range(1,self.flares):
+                x = light_pos_screen.x - (flare_direction.x * self.offsets[i]) * 2
+                y = light_pos_screen.y - (flare_direction.y * self.offsets[i]) * 2
+            
+                
+                element_size = self.scales[i]
+                element_color = self.colors[i] * fade_intensity 
+                index = self.indexes[i]
+                clip = self.clips[index]
+                self.render_flare_element(x,y, element_size, element_color,fade_intensity,clip)
+   
+
+        glBindBuffer(GL_ARRAY_BUFFER, self.VBO)        
+        glBufferData(GL_ARRAY_BUFFER, self.vertexIndex * self.stride * 4, np.array(self.vertices, dtype=np.float32), GL_DYNAMIC_DRAW)
+        glBindVertexArray(self.VAO)
+        glDrawArrays(GL_TRIANGLES, 0, self.vertexIndex)
+
+
+    def set_color(self, color):
+        self.red = color[0]
+        self.green = color[1]
+        self.blue = color[2]
+    
+    def set_alpha(self, a):
+        self.alpha = a
+
+    def render_flare_element(self, x,y, size, color,fade,clip):
+        self.red = color.x 
+        self.green = color.y
+        self.blue = color.z
+        self.alpha = fade
+        self.draw_quad(x,y,size,clip.x,clip.y,clip.width,clip.height)
+   

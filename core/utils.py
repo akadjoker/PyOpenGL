@@ -17,8 +17,27 @@ class UtilMath:
         t = UtilMath.clamp((x - min) / (max - min), 0.0, 1.0)
         return t * t * (3.0 - 2.0 * t)
 
+    @staticmethod
+    def angle_between_vectors(vec1, vec2):
+        dotProduct = glm.dot(vec1, vec2)
+        mag = glm.length(vec1) * glm.length(vec2)
+        if mag == 0:
+            return 0
+        angle = math.acos(dotProduct / mag)
+        
+        return angle
+    @staticmethod
+    def angle_between_camera_and_point(camera_position, camera_rotation_quat, point_position):
+        forward_vector = camera_rotation_quat * glm.vec3(0, 0, -1)
+        forward_vector = glm.normalize(forward_vector)  
+        direction_to_point = glm.normalize(point_position - camera_position)
 
+        cos_angle = glm.dot(forward_vector, direction_to_point)
+        angle_rad = glm.acos(cos_angle)  # O ângulo em radianos entre 0 e π (0° a 180°)
+        angle_deg = glm.degrees(angle_rad)  # Converter para graus
+        
 
+        return angle_deg
 
     @staticmethod
     def ray_from_mouse(mouse_x, mouse_y, viewport_width, viewport_height, view_matrix, projection_matrix):
@@ -46,6 +65,38 @@ class UtilMath:
         ray_direction = glm.normalize(glm.vec3(far_world - near_world))
         
         return ray_direction
+    
+    @staticmethod
+    def ray_intersect_triangle(ray_origin, ray_direction, v0, v1, v2):
+        epsilon = 1e-8
+        edge1 = v1 - v0
+        edge2 = v2 - v0
+        h = glm.cross(ray_direction, edge2)
+        a = glm.dot(edge1, h)
+        
+        if -epsilon < a < epsilon:
+            return False, 0.0    
+        
+        f = 1.0 / a
+        s = ray_origin - v0
+        u = f * glm.dot(s, h)
+        
+        if u < 0.0 or u > 1.0:
+            return False, 0.0 
+        
+        q = glm.cross(s, edge1)
+        v = f * glm.dot(ray_direction, q)
+        
+        if v < 0.0 or u + v > 1.0:
+            return False, 0.0 
+        
+        t = f * glm.dot(edge2, q)
+        
+        if t > epsilon:
+            return True, t   
+            
+        return False, 0.0   
+
 
 class Rectangle:
     def __init__(self, x, y, width, height):

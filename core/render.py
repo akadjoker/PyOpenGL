@@ -88,7 +88,7 @@ class Render:
     states = {}
     stack = []
     shadows=[]
-
+    linesBatch=None
     defaultTexture = None
     defaultFont = None
     cursor_hand = None
@@ -252,16 +252,26 @@ class Render:
 
     @staticmethod
     def set_texture(texture, layer):
-        # if layer < 0 or layer > 3:
-        #     #print(f"Layer {layer} not found")
-        #     return
-        # if Render.layers[layer] == texture:
-        #     return
+        if layer < 0 or layer > 3:
+            #print(f"Layer {layer} not found")
+            return
+        if Render.layers[layer] == texture:
+            return
         
         glActiveTexture(GL_TEXTURE0 + layer)
         glBindTexture(GL_TEXTURE_2D, texture)
         Render.textures += 1
-    
+    @staticmethod
+    def set_default_texture(layer):
+        if layer < 0 or layer > 3:
+            #print(f"Layer {layer} not found")
+            return
+        if Render.layers[layer] == Render.defaultTexture:
+            return
+        
+        glActiveTexture(GL_TEXTURE0 + layer)
+        glBindTexture(GL_TEXTURE_2D, Render.defaultTexture)
+        Render.textures += 1
     @staticmethod
     def set_texture_cube(texture, layer=1):
         glActiveTexture(GL_TEXTURE0 + layer)
