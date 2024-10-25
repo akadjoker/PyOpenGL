@@ -50,8 +50,16 @@ class Core:
         glfw.set_key_callback(self.window, self._key_callback)
         glfw.set_cursor_pos_callback(self.window, self._cursor_callback)
         glfw.set_mouse_button_callback(self.window, self._mouse_callback)
+        
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        glDepthFunc(GL_LESS)
+        glDepthMask(True)
+        glEnable(GL_DEPTH_TEST)
+        glEnable(GL_CULL_FACE)
+        glCullFace(GL_BACK)
+       
+
         Render.init()
         Render.set_size(width, height)
         Render.set_viewport(0, 0, width, height)

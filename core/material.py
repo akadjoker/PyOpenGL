@@ -18,10 +18,14 @@ class LightType(Enum):
 class Material:
     def __init__(self,diffuse=None,spacular=None):
         self.textures = []
+        self.castShadow = True
         if diffuse is not None:
             self.set_texture(0,diffuse)
         if spacular is not None:
             self.set_texture(1,spacular)
+
+    def add_texture(self,texture):
+        self.textures.append(texture)
   
     def set_texture(self,layer,texture):
         while len(self.textures) <= layer:
@@ -187,6 +191,8 @@ class ScreenShader(Shader):
             out vec4 FragColor;
             void main() 
             {
+                //float depthValue = texture(uTexture, TexCoord).r; 
+                //FragColor = vec4(vec3(depthValue), 1.0); 
                 FragColor = texture(uTexture, TexCoord);
             }
         """
@@ -221,11 +227,122 @@ class DepthShader(Shader):
        ///     fragDepth = gl_FragCoord.z;
 
 
-         FragColor = vec4(vec3(gl_FragCoord.z), 1.0);
+                // FragColor = vec4(vec3(gl_FragCoord.z), 1.0);
         
             }
         """
         self.create_shader(vertex,fragment)
+
+class PointDepthShader(Shader):
+    def __init__(self):
+        super().__init__()
+        self.attributes=[Attribute.POSITION3D] 
+
+        vertex="""#version 330
+             layout (location = 0) in vec3 aPosition;
+           
+            uniform mat4 uModel;      
+            uniform mat4 lightSpaceMatrix;
+
+            void main() {
+                gl_Position = lightSpaceMatrix * uModel * vec4(aPosition, 1.0);
+            }
+
+        """
+
+        fragment="""#version 330
+           
+           in vec4 FragPos;
+
+        uniform vec3 lightPos;
+        uniform float far_plane;
+
+        void main() 
+        {
+        
+            float lightDistance = length(FragPos.xyz - lightPos);
+            
+    
+            
+            lightDistance = lightDistance / far_plane;
+            
+      
+           // gl_FragDepth = lightDistance;
+        }
+
+        """
+        self.create_shader(vertex,fragment)
+        self.set_float("far_plane", 10.0)
+
+
+
+class PointGeoDepthShader(Shader):
+    def __init__(self):
+        super().__init__()
+        self.attributes=[Attribute.POSITION3D] 
+
+        vertex="""#version 330
+             layout (location = 0) in vec3 aPosition;
+           
+            uniform mat4 uModel;      
+          
+
+            void main() 
+            {
+                gl_Position =  uModel * vec4(aPosition, 1.0);
+            }
+
+        """
+
+        fragment="""#version 330
+           
+           in vec4 FragPos;
+
+        uniform vec3 lightPos;
+        uniform float far_plane;
+
+        void main() 
+        {
+        
+            float lightDistance = length(FragPos.xyz - lightPos);
+            
+    
+            
+            lightDistance = lightDistance / far_plane;
+            
+      
+            gl_FragDepth = lightDistance;
+        }
+
+        """
+        geometry = """#version 330
+        layout (triangles) in;
+        layout (triangle_strip, max_vertices=18) out;
+
+            uniform mat4 shadowMatrices[6];
+
+            out vec4 FragPos; // FragPos from GS (output per emitvertex)
+
+            void main()
+            {
+                for(int face = 0; face < 6; ++face)
+                {
+                    gl_Layer = face; // built-in variable that specifies to which face we render.
+                    for(int i = 0; i < 3; ++i) // for each triangle's vertices
+                    {
+                        FragPos = gl_in[i].gl_Position;
+                        gl_Position = shadowMatrices[face] * FragPos;
+                        EmitVertex();
+                    }    
+                    EndPrimitive();
+                }
+            } 
+
+        """
+
+        self.create_shader_with_geometry(vertex,fragment,geometry)
+        
+        self.set_float("far_plane", 20.0)
 
 class DebugDepthShader(Shader):
     def __init__(self):
@@ -256,31 +373,6 @@ class DebugDepthShader(Shader):
             }
         """
         self.create_shader(vertex,fragment)
-
-class PointShader(Shader):
-    def __init__(self):
-        super().__init__()
-        self.attributes=[Attribute.POSITION3D] 
-        vertex="""#version 330
-
-        layout(location = 0) in vec3 aPos;
-        void main()
-        {
-            gl_Position = vec4(aPos, 1.0);
-        }
-        """
-
-        fragment="""#version 330
-        out vec4 fragColor;
-        uniform sampler2D texture0;
-        void main()
-        {
-            fragColor =   vec4(1.0,1.0,1.0,1.0);
-        }
-        """
-        self.create_shader(vertex,fragment)
-        print("Created Shader")
-
 
 
 
@@ -663,6 +755,7 @@ class PointShader(Shader):
             vec3 ambient;
             vec3 diffuse;
             vec3 specular;
+           float shininess;
         };
 
         in vec2 TexCoords;
@@ -671,7 +764,6 @@ class PointShader(Shader):
         
         uniform sampler2D diffuseMap;
         uniform sampler2D specularMap;
-        uniform float shininess;
         
         uniform PointLight point;
         uniform vec3 viewPos;
@@ -746,7 +838,7 @@ class PointShader(Shader):
 
                 // Specular shading
                 vec3 halfwayDir = normalize(lightDir + viewDir);
-                float spec = pow(max(dot(normal, halfwayDir), 0.0), shininess);
+                float spec = pow(max(dot(normal, halfwayDir), 0.0), light.shininess);
                 if (spec > 0.0)
                 {
                     specular = light.specular * spec * specularColor;
@@ -818,6 +910,7 @@ class SpotShader(Shader):
             vec3 ambient;
             vec3 diffuse;
             vec3 specular;
+           float shininess;
         };
 
         in vec2 TexCoords;
@@ -825,7 +918,6 @@ class SpotShader(Shader):
         in vec3 FragPos;
         uniform sampler2D diffuseMap;
         uniform sampler2D specularMap;
-        uniform float shininess;
         
         uniform SpotLight spot;
         uniform vec3 viewPos;
@@ -901,7 +993,7 @@ class SpotShader(Shader):
 
                 // Specular shading
                 vec3 halfwayDir = normalize(lightDir + viewDir);
-                float spec = pow(max(dot(normal, halfwayDir), 0.0), shininess);
+                float spec = pow(max(dot(normal, halfwayDir), 0.0), light.shininess);
                 if (spec > 0.0)
                 {
                     specular = light.specular * spec * specularColor;
@@ -1070,11 +1162,9 @@ class SingleShadowShader(Shader):
             return shadow;
        }
 
-
-
         float CalculateShadowPoissonDisk(vec3 lightDir, vec3 normal, float cosTheta, float splitDistance)
         {
-            // Calcula o tamanho do texel da textura de sombra
+    
             vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
 
             // Projeção das coordenadas no espaço de luz
@@ -1083,13 +1173,13 @@ class SingleShadowShader(Shader):
             // Profundidade atual do fragmento no espaço de luz
             float currentDepth = projCoords.z;
 
-            // Se a profundidade for maior que 1.0, está fora do frustum da luz
+            // Se a profundidade for maior que 1.0, está fora  da luz
             if (currentDepth > 1.0)
             {
                 return 0.0;
             }
 
-            // Calcula o bias dinâmico
+
             float bias = dynamicBias(normal, lightDir, splitDistance, 0.005);
 
 
@@ -1097,7 +1187,6 @@ class SingleShadowShader(Shader):
 
             float shadow = 0.0;
 
-            //  amostras do Poisson Disk
             const int samples = 16;
             const vec2 poissonDisk[16] = vec2[](
                 vec2(-0.94201624, -0.39906216), vec2(0.94558609, -0.76890725),                vec2(-0.094184101, -0.92938870), vec2(0.34495938, 0.29387760),
@@ -1106,20 +1195,14 @@ class SingleShadowShader(Shader):
                 vec2(-0.24188840, 0.99706507), vec2(-0.81409955, 0.91437590),                vec2(0.19984126, 0.78641367), vec2(0.14383161, -0.14100790)
             );
 
-            // Loop para aplicar Poisson Disk Sampling nas coordenadas de sombra
             for (int i = 0; i < samples; ++i)
             {
-                // Calcula o deslocamento usando Poisson Disk e o tamanho do texel
                 vec2 offset = poissonDisk[i] * texelSize;
-
-                // Amostra a profundidade do shadow map com o deslocamento
                 float pcfDepth = texture(shadowMap, projCoords.xy + offset).r;
-
-                // Verifica se o fragmento está na sombra
                 shadow += (currentDepth - bias) > pcfDepth ? 1.0 : 0.0;
             }
 
-            // Normaliza o valor da sombra com base no número de amostras
+        
             shadow /= float(samples);
 
             return shadow;
@@ -1131,7 +1214,132 @@ class SingleShadowShader(Shader):
     
        
        
+
+
+class PointShadowShader(Shader):
+    def __init__(self):
+        super().__init__()
+        self.attributes=[Attribute.POSITION3D,Attribute.TEXCOORD0,Attribute.NORMAL] 
+
+  
+        vertex="""#version 330 core
+
+        layout(location = 0) in vec3 aPosition;
+        layout(location = 1) in vec2 aTexCoord;
+        layout(location = 2) in vec3 aNormal;
+
         
+        uniform mat4 uProjection;
+        uniform mat4 uView;
+        uniform mat4 uModel;
+
+
+        out vec2 TexCoords;
+        out vec3 Normal;
+        out vec3 FragPos;
+
+
+        void main()
+        {
+            FragPos = (uModel * vec4(aPosition, 1.0)).xyz;
+            gl_Position = uProjection * uView *  vec4(FragPos, 1.0);
+            TexCoords = aTexCoord;
+            Normal = mat3(transpose(inverse(uModel))) * aNormal;  
+        }
+        """
+
+        fragment="""#version 330 core
+
+
+        out vec4 FragColor;
+
+
+        in vec2 TexCoords;
+        in vec3 Normal;
+        in vec3 FragPos;
+
+        uniform sampler2D diffuseMap;
+        uniform samplerCube shadowMap;
+        uniform vec3 lightPos;
+        uniform vec3 viewPos;
+        uniform float far_plane;          
+     
+
+        float ShadowCalculation(vec3 fragPos) ;
+
+        void main()
+        {
+            
+            vec3 color = texture(diffuseMap, TexCoords).rgb;
+            vec3 normal = normalize(Normal);
+            vec3 lightColor = vec3(0.8);
+            
+        // ambient
+        vec3 ambient = 0.3 * lightColor;
+        
+        // diffuse
+        vec3 lightDir = normalize(lightPos - FragPos);
+        float diff = max(dot(lightDir, normal), 0.0);
+        vec3 diffuse = diff * lightColor;
+        
+        // specular
+        vec3 viewDir = normalize(viewPos - FragPos);
+        vec3 reflectDir = reflect(-lightDir, normal);
+        float spec = 0.0;
+        vec3 halfwayDir = normalize(lightDir + viewDir);  
+        spec = pow(max(dot(normal, halfwayDir), 0.0), 128.0);
+        vec3 specular = spec * lightColor;    
+        
+        // calculate shadow
+        float shadow =  ShadowCalculation(FragPos) ;                      
+        vec3 lighting = (ambient + (1.0 - shadow) * (diffuse + specular)) * color;    
+        
+        //    vec3 lighting = (ambient + diffuse + specular) * color;
+        
+            
+            FragColor = vec4(lighting, 1.0);
+            
+        }
+
+
+        float ShadowCalculation(vec3 fragPos) 
+        {
+            const vec3 gridSamplingDisk[20] = vec3[]
+            (
+            vec3(1, 1,  1), vec3( 1, -1,  1), vec3(-1, -1,  1), vec3(-1, 1,  1), 
+            vec3(1, 1, -1), vec3( 1, -1, -1), vec3(-1, -1, -1), vec3(-1, 1, -1),
+            vec3(1, 1,  0), vec3( 1, -1,  0), vec3(-1, -1,  0), vec3(-1, 1,  0),
+            vec3(1, 0,  1), vec3(-1,  0,  1), vec3( 1,  0, -1), vec3(-1, 0, -1),
+            vec3(0, 1,  1), vec3( 0, -1,  1), vec3( 0, -1, -1), vec3( 0, 1, -1)
+            );
+            vec3 fragToLight = fragPos - lightPos;
+            float currentDepth = length(fragToLight);
+            float shadow = 0.0;
+            float bias = 0.05;
+            int samples = 20;
+            float viewDistance = length(lightPos - fragPos);
+            float diskRadius = (1.0 + (viewDistance / far_plane)) / 25.0;
+            for(int i = 0; i < samples; ++i)
+            {
+                float closestDepth = texture(shadowMap, fragToLight + gridSamplingDisk[i] * diskRadius).r;
+                closestDepth *= far_plane;   // undo mapping [0;1]
+                //FragColor = vec4(vec3(closestDepth / far_plane), 1.0);  // debug
+                if(currentDepth - bias > closestDepth)
+                    shadow += 1.0;
+            }
+            shadow /= float(samples);
+       
+
+              
+
+            return shadow;
+        }
+     
+        """
+        self.create_shader(vertex,fragment)
+        self.set_float("far_plane", 10.0)
+
+            
 
 
 
@@ -1243,3 +1451,503 @@ class SpotLightData(LightData):
         self.shader.set_float("spot.cutOff", self.cutOff)
         self.shader.set_float("spot.outerCutOff", self.outerCutOff)
 
+
+
+#**********************************************************************************************************************************
+#                                               PBR
+
+
+
+        
+        
+
+class DirectionalPbrShader(Shader):
+    def __init__(self):
+        super().__init__()
+        self.attributes=[Attribute.POSITION3D,Attribute.TEXCOORD0,Attribute.NORMAL,Attribute.TANGENT] 
+
+        vertex="""#version 330 core
+
+        layout(location = 0) in vec3 aPos;
+        layout(location = 1) in vec2 aTexCoord;
+        layout(location = 2) in vec3 aNormal;
+        layout(location = 3) in vec3 aTangent;
+
+        
+        uniform mat4 uProjection;
+        uniform mat4 uView;
+        uniform mat4 uModel;
+
+        out vec2 TexCoords;
+        out vec3 FragPos;
+        out vec3 Normal;
+        out mat3 TBN;
+
+        void main()
+        {
+            TexCoords = aTexCoord;
+            
+                vec3 T = normalize(mat3(transpose(inverse(uModel))) * aTangent);
+                vec3 N = normalize(mat3(transpose(inverse(uModel))) * aNormal);
+                vec3 B = cross(N, T);
+
+                TBN = mat3(T, B, N);
+                
+                Normal = N;
+            
+
+
+            FragPos = vec3(uModel * vec4(aPos, 1.0));
+            gl_Position =  uProjection * uView  *  vec4(FragPos, 1.0);
+        }
+        """
+
+        fragment="""#version 330 core
+        out vec4 FragColor;
+
+        in vec2 TexCoords;
+        in mat3 TBN;
+        in vec3 FragPos;
+        in vec3 Normal;
+        uniform sampler2D albedoMap;
+        uniform sampler2D normalMap;
+
+        uniform vec3 viewPos;
+        uniform vec3 lightDir;  
+        uniform vec3 lightColor;  
+        uniform float normalStrength;
+        uniform float fixedMetalness;
+        uniform float fixedRoughness;
+        uniform float lightIntensity; 
+
+        const float PI = 3.14159265359;
+  
+        vec3 GetNormalFromMap()
+        {
+            vec3 tangentNormal = texture(normalMap, TexCoords).xyz * 2.0 - 1.0;
+            tangentNormal = mix(vec3(0.0, 0.0, 1.0), tangentNormal, normalStrength); 
+            return normalize(TBN * tangentNormal);
+        }
+    vec3 FresnelSchlick(float cosTheta, vec3 F0)
+    {
+        return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
+    }
+
+    
+    float DistributionGGX(vec3 N, vec3 H, float roughness)
+    {
+        float a = roughness * roughness;
+        float a2 = a * a;
+        float NdotH = max(dot(N, H), 0.0);
+        float NdotH2 = NdotH * NdotH;
+
+        float num = a2;
+        float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+        denom = PI * denom * denom;
+
+        return num / denom;
+    }
+
+    
+    float GeometrySchlickGGX(float NdotV, float roughness)
+    {
+        float r = roughness + 1.0;
+        float k = (r * r) / 8.0;
+
+        float num = NdotV;
+        float denom = NdotV * (1.0 - k) + k;
+
+        return num / denom;
+    }
+
+
+    float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
+    {
+        float NdotV = max(dot(N, V), 0.0);
+        float NdotL = max(dot(N, L), 0.0);
+        float ggx2 = GeometrySchlickGGX(NdotV, roughness);
+        float ggx1 = GeometrySchlickGGX(NdotL, roughness);
+
+        return ggx1 * ggx2;
+    }
+        void main()
+        {
+           
+            vec3 albedo = texture(albedoMap, TexCoords).rgb;
+            vec3 normal = GetNormalFromMap();
+            
+            
+            vec3 viewDir = normalize(viewPos - FragPos);
+            vec3 lightDirNorm = normalize(-lightDir);
+
+            // Calcular o termo de Fresnel
+            vec3 F0 = vec3(0.04);  // Valor base para dielétricos
+            F0 = mix(F0, albedo, fixedMetalness);  // Metais usam a cor do albedo como F0
+            vec3 H = normalize(viewDir + lightDirNorm);
+            float NDF = DistributionGGX(normal, H, fixedRoughness);
+            float G = GeometrySmith(normal, viewDir, lightDirNorm, fixedRoughness);
+            vec3 F = FresnelSchlick(max(dot(H, viewDir), 0.0), F0);
+
+            // Specular do PBR
+            vec3 nominator = NDF * G * F;
+            float denominator = 4.0 * max(dot(normal, viewDir), 0.0) * max(dot(normal, lightDirNorm), 0.0) + 0.001;
+            vec3 specular = nominator / denominator;
+
+            // Difusa do PBR (Lambertian BRDF)
+            vec3 kS = F;
+            vec3 kD = vec3(1.0) - kS;
+            kD *= 1.0 - fixedMetalness;  // Sem difusa em materiais metálicos
+
+            float NdotL = max(dot(normal, lightDirNorm), 0.0);
+            vec3 diffuse = (kD * albedo / PI) * NdotL;
+
+            
+            vec3 lighting = (diffuse + specular) * lightColor * lightIntensity;
+
+            FragColor = vec4(lighting, 1.0);
+        }
+
+         
+     
+        """
+        self.create_shader(vertex,fragment)
+        self.set_vector3f("viewPos",glm.vec3(0.0,0.0,0.0))
+        self.set_vector3f("lightDir",glm.vec3(0.0,-0.9,0.2))
+        self.set_vector3f("lightColor",glm.vec3(1.0,1.0,1.0))
+        self.set_float("normalStrength",0.2)
+        self.set_float("fixedMetalness",0.0)
+        self.set_float("fixedRoughness",0.5)
+        self.set_float("lightIntensity",2.5)
+        self.set_int("albedoMap",0)
+        self.set_int("normalMap",1)
+       
+
+        
+
+class DirectionalPbrShadowShader(Shader):
+    def __init__(self):
+        super().__init__()
+        self.attributes=[Attribute.POSITION3D,Attribute.TEXCOORD0,Attribute.NORMAL,Attribute.TANGENT] 
+
+        vertex="""#version 330 core
+
+        layout(location = 0) in vec3 aPos;
+        layout(location = 1) in vec2 aTexCoord;
+        layout(location = 2) in vec3 aNormal;
+        layout(location = 3) in vec3 aTangent;
+
+        
+        uniform mat4 uProjection;
+        uniform mat4 uView;
+        uniform mat4 uModel;
+        uniform mat4 uLightSpaceMatrix;
+
+        out vec2 TexCoords;
+        out vec3 FragPos;
+        out vec3 Normal;
+        out mat3 TBN;
+        out vec4 lightSpace ;
+
+        void main()
+        {
+            TexCoords = aTexCoord;
+            
+                vec3 T = normalize(mat3(transpose(inverse(uModel))) * aTangent);
+                vec3 N = normalize(mat3(transpose(inverse(uModel))) * aNormal);
+                vec3 B = cross(N, T);
+
+                TBN = mat3(T, B, N);
+                
+                Normal = N;
+            
+                FragPos = vec3(uModel * vec4(aPos, 1.0));
+                lightSpace = uLightSpaceMatrix *  vec4(FragPos, 1.0);
+
+                gl_Position =  uProjection * uView  *  vec4(FragPos, 1.0);
+        }
+        """
+
+        fragment="""#version 330 core
+        out vec4 FragColor;
+
+        in vec2 TexCoords;
+        in mat3 TBN;
+        in vec3 FragPos;
+        in vec3 Normal;
+        in vec4 lightSpace;
+        
+        uniform sampler2D albedoMap;
+        uniform sampler2D normalMap;
+        uniform sampler2D shadowMap;
+
+        uniform vec3 viewPos;
+        uniform vec3 lightPos;
+        uniform vec3 lightColor;  
+        uniform float normalStrength;
+        uniform float fixedMetalness;
+        uniform float fixedRoughness;
+        uniform float lightIntensity; 
+        const float PI = 3.14159265359;
+
+        float CalculateShadowPCF(vec3 lightDir, vec3 normal,float cosTheta,float splitDistance);
+
+        float CalculateShadowPoissonDisk(vec3 lightDir, vec3 normal,float cosTheta, float splitDistance);
+
+  
+        vec3 GetNormalFromMap()
+        {
+            vec3 tangentNormal = texture(normalMap, TexCoords).xyz * 2.0 - 1.0;
+            tangentNormal = mix(vec3(0.0, 0.0, 1.0), tangentNormal, normalStrength); 
+            return normalize(TBN * tangentNormal);
+        }
+    vec3 FresnelSchlick(float cosTheta, vec3 F0)
+    {
+        return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
+    }
+
+    
+    float DistributionGGX(vec3 N, vec3 H, float roughness)
+    {
+        float a = roughness * roughness;
+        float a2 = a * a;
+        float NdotH = max(dot(N, H), 0.0);
+        float NdotH2 = NdotH * NdotH;
+
+        float num = a2;
+        float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+        denom = PI * denom * denom;
+
+        return num / denom;
+    }
+
+    
+    float GeometrySchlickGGX(float NdotV, float roughness)
+    {
+        float r = roughness + 1.0;
+        float k = (r * r) / 8.0;
+
+        float num = NdotV;
+        float denom = NdotV * (1.0 - k) + k;
+
+        return num / denom;
+    }
+
+
+    float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
+    {
+        float NdotV = max(dot(N, V), 0.0);
+        float NdotL = max(dot(N, L), 0.0);
+        float ggx2 = GeometrySchlickGGX(NdotV, roughness);
+        float ggx1 = GeometrySchlickGGX(NdotL, roughness);
+
+        return ggx1 * ggx2;
+    }
+        void main()
+        {
+           
+            vec3 albedo = texture(albedoMap, TexCoords).rgb;
+            vec3 normal = GetNormalFromMap();
+            
+            // Direção da luz
+            vec3 lightDir = normalize(FragPos-lightPos);
+            
+            vec3 viewDir = normalize(viewPos - FragPos);
+            vec3 lightDirNorm = normalize(-lightDir);
+
+            // Calcular o termo de Fresnel
+            vec3 F0 = vec3(0.04);  // Valor base para dielétricos
+            F0 = mix(F0, albedo, fixedMetalness);  // Metais usam a cor do albedo como F0
+            vec3 H = normalize(viewDir + lightDirNorm);
+            float NDF = DistributionGGX(normal, H, fixedRoughness);
+            float G = GeometrySmith(normal, viewDir, lightDirNorm, fixedRoughness);
+            vec3 F = FresnelSchlick(max(dot(H, viewDir), 0.0), F0);
+
+            // Specular do PBR
+            vec3 nominator = NDF * G * F;
+            float denominator = 4.0 * max(dot(normal, viewDir), 0.0) * max(dot(normal, lightDirNorm), 0.0) + 0.001;
+            vec3 specular = nominator / denominator;
+
+            // Difusa do PBR (Lambertian BRDF)
+            vec3 kS = F;
+            vec3 kD = vec3(1.0) - kS;
+            kD *= 1.0 - fixedMetalness;  // Sem difusa em materiais metálicos
+
+            float NdotL = max(dot(normal, lightDirNorm), 0.0);
+            vec3 diffuse = (kD * albedo / PI) * NdotL;
+
+            //float shadow = CalculateShadowPCF( lightDir,normal, NdotL, 0.1);
+            float shadow =CalculateShadowPoissonDisk(lightDir,normal, NdotL, 0.1);
+
+              // Ambient
+            //vec3 ambient =0.2 *  lightColor * lightIntensity;
+
+            // vec3 lighting = (1.0 - shadow) * (diffuse + specular) * lightColor * lightIntensity;
+
+            // vec3 lighting = (ambient + shadow)  * (diffuse + specular)) ; 
+            
+            //vec3 lighting = (diffuse + specular) * lightColor * lightIntensity;
+
+                        // Calcule a intensidade de luz com sombra
+            vec3 shadowFactor = mix(vec3(1.0), vec3(1.0 - shadow), shadow); 
+
+            // Iluminação com sombra aplicada
+            vec3 lighting = (diffuse + specular) * lightColor * lightIntensity * shadowFactor;
+
+            FragColor = vec4(lighting, 1.0);
+        }
+
+           float dynamicBias(vec3 normal, vec3 lightDir, float cascadeSplitDistance, float baseBias) 
+        {
+            // Calcula o ângulo entre a direção da luz e a superfície
+            float bias = max(baseBias * (1.0 - dot(normal, lightDir)), baseBias);
+
+            // Reduz o bias com base na distância da cascata (splitDistance)
+            bias *= 1.0 / (cascadeSplitDistance * 0.5);
+
+            // Limitar o bias para evitar que se torne muito pequeno ou muito grande
+            bias = clamp(bias, baseBias, baseBias * 10.0);
+
+            return bias;
+        }
+
+       float CalculateShadowPCF(vec3 lightDir,vec3 normal,float cosTheta,float splitDistance)
+       {
+            vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
+            
+            vec3 projCoords = (lightSpace.xyz / lightSpace.w) * 0.5 + 0.5;
+            
+
+            float currentDepth = projCoords.z;
+
+            // keep the shadow at 0.0 when outside the far_plane region of the light's frustum.
+            if (currentDepth > 1.0)
+            {
+                return 0.0;
+            }
+
+            float bias = dynamicBias(normal, lightDir, splitDistance, 0.005);
+
+
+            float shadow = 0.0;
+            for (int x = -2; x <= 2; ++x)
+            {
+                for (int y = -2; y <= 2; ++y)
+                {
+                    vec2 texel = projCoords.xy + vec2(x, y) * texelSize;
+                    float pcfDepth = texture(shadowMap, texel).r;
+                    shadow += (currentDepth - bias) > pcfDepth ? 1.0 : 0.0;
+                }
+            }
+            shadow /= 25.0;  // Normaliza para 5x5 amostras
+
+            return shadow;
+       }
+
+        float CalculateShadowPoissonDisk(vec3 lightDir, vec3 normal, float cosTheta, float splitDistance)
+        {
+    
+            vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
+
+            // Projeção das coordenadas no espaço de luz
+            vec3 projCoords = (lightSpace.xyz / lightSpace.w) * 0.5 + 0.5;
+
+            // Profundidade atual do fragmento no espaço de luz
+            float currentDepth = projCoords.z;
+
+            // Se a profundidade for maior que 1.0, está fora  da luz
+            if (currentDepth > 1.0)
+            {
+                return 0.0;
+            }
+
+
+            float bias = dynamicBias(normal, lightDir, splitDistance, 0.005);
+
+
+
+
+            float shadow = 0.0;
+
+            const int samples = 16;
+            const vec2 poissonDisk[16] = vec2[](
+                vec2(-0.94201624, -0.39906216), vec2(0.94558609, -0.76890725),                vec2(-0.094184101, -0.92938870), vec2(0.34495938, 0.29387760),
+                vec2(-0.91588581, 0.45771432), vec2(-0.81544232, -0.87912464),                vec2(-0.38277543, 0.27676845), vec2(0.97484398, 0.75648379),
+                vec2(0.44323325, -0.97511554), vec2(0.53742981, -0.47373420),                vec2(-0.26496911, -0.41893023), vec2(0.79197514, 0.19090188),
+                vec2(-0.24188840, 0.99706507), vec2(-0.81409955, 0.91437590),                vec2(0.19984126, 0.78641367), vec2(0.14383161, -0.14100790)
+            );
+
+            for (int i = 0; i < samples; ++i)
+            {
+                vec2 offset = poissonDisk[i] * texelSize;
+                float pcfDepth = texture(shadowMap, projCoords.xy + offset).r;
+                shadow += (currentDepth - bias) > pcfDepth ? 1.0 : 0.0;
+            }
+
+        
+            shadow /= float(samples);
+
+            return shadow;
+        }
+
+         
+     
+        """
+        self.create_shader(vertex,fragment)
+        self.set_vector3f("viewPos",glm.vec3(0.0,0.0,0.0))
+        self.set_vector3f("lightDir",glm.vec3(0.0,-0.9,0.2))
+        self.set_vector3f("lightColor",glm.vec3(1.0,1.0,1.0))
+        self.set_float("normalStrength",0.2)
+        self.set_float("fixedMetalness",0.0)
+        self.set_float("fixedRoughness",0.5)
+        self.set_float("lightIntensity",2.5)
+        self.set_int("albedoMap",0)
+        self.set_int("normalMap",1)
+        self.set_int("shadowMap",2)
+       
+
+
+class FlareShader(Shader):
+    def __init__(self):
+        super().__init__()
+        self.attributes=[Attribute.POSITION2D,Attribute.TEXCOORD0] 
+
+        vertex="""#version 330
+
+        layout (location = 1) in vec2 aTexCoord;
+
+        out vec2 TexCoords;
+
+        uniform vec2 elementPos;    // Posição do flare em NDC, calculada no código principal
+        uniform float elementScale;
+
+        void main()
+        {
+          
+            vec2 scaledPos = aPos * elementScale;
+            vec2 screenPos = elementPos + scaledPos;
+
+            // `screenPos` em NDC,  Normalized Device Coordinates
+            gl_Position = vec4(screenPos, 0.0, 1.0);
+            TexCoords = aTexCoord;
+        }
+        """
+
+        fragment="""#version 330
+
+
+            in vec2 TexCoords;
+            out vec4 FragColor;
+
+            uniform sampler2D flareTexture;  
+            uniform vec4 elementColor;      
+
+            void main()
+            {
+
+                vec4 texColor = texture(flareTexture, TexCoords);
+                FragColor = elementColor * texColor;
+            }
+        """
+        self.create_shader(vertex,fragment)
+
+        self.set_vector4f("elementColor",glm.vec4(1.0,1.0,1.0))

@@ -70,7 +70,7 @@ class Render:
     blend_mode = BlendMode.NONE
     cull_mode = CullMode.NONE
     matrix=[]
-    cull = False
+    cull = True
     material = None
     depth_test = False
     scissor_test = False
@@ -78,6 +78,7 @@ class Render:
     triangles = 0
     vertices = 0
     textures = 0
+    cubeTexture = -1
     programs = 0
     frustum = Frustum()
     clear_flag = GL_COLOR_BUFFER_BIT
@@ -220,7 +221,7 @@ class Render:
     @staticmethod
     def load_texture(file_path,id):
         if id in Render.texture_assets:
-            print(f"Texture {id} already loaded")
+            #print(f"Texture {id} already loaded")
             return Render.texture_assets[id]
         texture = Texture2D()
         texture.load(file_path)
@@ -251,17 +252,29 @@ class Render:
 
     @staticmethod
     def set_texture(texture, layer):
-        #if Render.layers[layer] == texture:
-        #    return
+        # if layer < 0 or layer > 3:
+        #     #print(f"Layer {layer} not found")
+        #     return
+        # if Render.layers[layer] == texture:
+        #     return
         
         glActiveTexture(GL_TEXTURE0 + layer)
         glBindTexture(GL_TEXTURE_2D, texture)
         Render.textures += 1
+    
+    @staticmethod
+    def set_texture_cube(texture, layer=1):
+        glActiveTexture(GL_TEXTURE0 + layer)
+        glBindTexture(GL_TEXTURE_CUBE_MAP, texture)
+        Render.textures += 1
+
+    @staticmethod
+    def set_texture_cube_face(texture, face):
+        glBindTexture(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, texture); 
+    
 
     @staticmethod
     def set_depth_test(enable):
-        if Render.depth_test == enable:
-            return
         Render.depth_test = enable
         if enable:
             glEnable(GL_DEPTH_TEST)
@@ -321,8 +334,6 @@ class Render:
 
     @staticmethod
     def set_cull(enable):
-        if Render.cull == enable:
-            return
         Render.cull = enable
         if enable:
             glEnable(GL_CULL_FACE)
@@ -331,7 +342,7 @@ class Render:
 
     @staticmethod
     def set_cull_mode(mode):
-        if Render.cull_mode == mode:
+        if not Render.cull:
             return
         Render.cull_mode = mode
         if mode == CullMode.Back:
@@ -437,10 +448,10 @@ class Render:
 
     @staticmethod
     def set_program(program):
-        if Render.program != program:
-            Render.program = program
-            glUseProgram(program)
-            Render.programs += 1
+        #if Render.program != program:
+        Render.program = program
+        glUseProgram(program)
+        Render.programs += 1
 
     @staticmethod
     def set_shader(shader):
@@ -594,7 +605,7 @@ class SingleRender:
 
         glBindVertexArray(self.VAO)
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
-        glBindVertexArray(0)
+        #glBindVertexArray(0)
 
 
 
@@ -606,7 +617,7 @@ class DepthTexture(Texture):
         self.frame_buffer = 0
         self.status = 0
         self.isBegin = False
-        self.format = ColorFormat.RGBA
+        self.format = ColorFormat.RGB
 
     def init(self, width, height):
         self.width = width
@@ -648,7 +659,6 @@ class DepthTexture(Texture):
         Render.save()
         Render.set_viewport(0, 0, self.width, self.height)
         Render.set_clear_color(1.0, 1.0, 1.0)
-        
         glBindFramebuffer(GL_FRAMEBUFFER, self.frame_buffer)
         glClear(GL_DEPTH_BUFFER_BIT)
         
@@ -666,6 +676,89 @@ class DepthTexture(Texture):
         super().release()
         glDeleteFramebuffers(1, [self.frame_buffer])
    
+class DepthCubeTexture(Texture):
+    def __init__(self):
+        super().__init__()
+        self.width = 0
+        self.height = 0
+        self.frame_buffer = 0
+        self.status = 0
+        self.isBegin = False
+        self.format = ColorFormat.RGB 
+
+    def init(self, width, height):
+        self.width = width
+        self.height = height
+        
+        self.frame_buffer = glGenFramebuffers(1)
+        glBindFramebuffer(GL_FRAMEBUFFER, self.frame_buffer)
+        
+        self.id = glGenTextures(1)
+        glBindTexture(GL_TEXTURE_CUBE_MAP, self.id)
+        
+        for i in range(6):
+            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_DEPTH_COMPONENT, self.width, self.height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, None)
+
+
+        
+        
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE)
+
+
+        glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, self.id, 0)
+
+        # Não usamos buffer de cor para sombras
+        #glDrawBuffer(GL_NONE)
+        #glReadBuffer(GL_NONE)
+
+        
+        self.status = glCheckFramebufferStatus(GL_FRAMEBUFFER)
+        if self.status != GL_FRAMEBUFFER_COMPLETE:
+            print("Framebuffer is not complete")
+        
+        glBindTexture(GL_TEXTURE_CUBE_MAP, 0)
+        glBindFramebuffer(GL_FRAMEBUFFER, 0)
+
+    
+    def begin(self):
+        if self.isBegin:
+            return
+        self.isBegin = True
+        Render.save()
+        Render.set_viewport(0, 0, self.width, self.height)
+        Render.set_clear_color(0.0, 0.0, 1.0)
+        glBindFramebuffer(GL_FRAMEBUFFER, self.frame_buffer)
+        glClear(GL_DEPTH_BUFFER_BIT)
+        
+    def render(self, face_index):
+        glBindFramebuffer(GL_FRAMEBUFFER, self.frame_buffer)
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_CUBE_MAP_POSITIVE_X + face_index, self.id, 0)
+        glDrawBuffer(GL_NONE)
+        glClear(GL_DEPTH_BUFFER_BIT)
+
+    def end(self):
+        if not self.isBegin:
+            return
+        self.isBegin = False
+        glBindFramebuffer(GL_FRAMEBUFFER, 0)
+        Render.restore()
+
+    def set_texture(self, layer):
+        glActiveTexture(GL_TEXTURE0)
+        glBindTexture(GL_TEXTURE_CUBE_MAP, self.id)
+        #glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_CUBE_MAP_POSITIVE_X + layer, self.id, 0)
+
+
+    def release(self):
+        super().release()
+        glDeleteFramebuffers(1, [self.frame_buffer])
+        glDeleteTextures(1, [self.id])
+
+
 
 class DepthBuffer:
     def __init__(self):

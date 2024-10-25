@@ -1,6 +1,6 @@
 from OpenGL.GL import *
 from enum import Enum
-
+import glm
 
 class Attribute(Enum):
     POSITION3D = 0
@@ -13,10 +13,11 @@ class Attribute(Enum):
     TANGENT = 13
     BITANGENT = 14
 
-MAT_PROJECTION = 1
-MAT_VIEW = 2
-MAT_MODEL = 4
-MAT_MPV = 8
+UNIFORM_PROJECTION = 1
+UNIFORM_VIEW = 2
+UNIFORM_MODEL = 4
+UNIFORM_MPV = 8
+UNIFORM_CAMERA = 16
 
 class Shader:
     def __init__(self):
@@ -48,6 +49,26 @@ class Shader:
         glUseProgram(self.program)
         self.load_uniforms()
 
+    def create_shader_with_geometry(self, vertString, fragString,geometryString):
+        vert = self.loadShaderFromString(vertString, GL_VERTEX_SHADER)
+        frag = self.loadShaderFromString(fragString, GL_FRAGMENT_SHADER)
+        geom = self.loadShaderFromString(geometryString, GL_GEOMETRY_SHADER)
+        glAttachShader(self.program, vert)
+        glAttachShader(self.program, frag)
+        glAttachShader(self.program, geom)
+        glLinkProgram(self.program)
+        result = glGetProgramiv(self.program, GL_LINK_STATUS)
+        if not result:
+            log = glGetProgramInfoLog(self.program)
+            print(f"Fail to link shader: {log.decode()}")
+            return
+        glDeleteShader(vert)
+        glDeleteShader(frag)
+        glDeleteShader(geom)
+        glUseProgram(self.program)
+        self.load_uniforms()
+     
+
     def load_shader(self, vertName, fragName):
         vert = self.loadShaderFromFile(vertName, GL_VERTEX_SHADER)
         frag = self.loadShaderFromFile(fragName, GL_FRAGMENT_SHADER)
@@ -69,7 +90,11 @@ class Shader:
 
 
     def loadShaderFromString(self, source, shaderType):
-        string_type = shaderType == GL_VERTEX_SHADER and "vertex" or "fragment"
+        string_type = "vertex"
+        if shaderType == GL_FRAGMENT_SHADER:
+            string_type = "fragment"
+        elif shaderType == GL_GEOMETRY_SHADER:
+            string_type = "geometry"
         shader = glCreateShader(shaderType)
         glShaderSource(shader, source)
         glCompileShader(shader)
@@ -83,7 +108,11 @@ class Shader:
     def loadShaderFromFile(self, fileName, shaderType):
         with open(fileName, 'r') as file:
             source = file.read()
-        string_type = shaderType == GL_VERTEX_SHADER and "vertex" or "fragment"
+        string_type = "vertex"
+        if shaderType == GL_FRAGMENT_SHADER:
+            string_type = "fragment"
+        elif shaderType == GL_GEOMETRY_SHADER:
+            string_type = "geometry"
         shader = glCreateShader(shaderType)
         glShaderSource(shader, source)
         glCompileShader(shader)
@@ -96,6 +125,8 @@ class Shader:
 
     def load_uniforms(self):
             program = self.program
+            glUseProgram(self.program)
+     
             num_uniforms = glGetProgramiv(program, GL_ACTIVE_UNIFORMS)
             for i in range(num_uniforms):
                 uniform_name, uniform_type = glGetActiveUniform(program, i)[:2]
@@ -104,13 +135,15 @@ class Shader:
                 self.uniforms[name] = uniform_location
 
             if 'uModel' in self.uniforms:
-                self.flags |= MAT_MODEL
+                self.flags |= UNIFORM_MODEL
             if 'uView' in self.uniforms:
-                self.flags |= MAT_VIEW
+                self.flags |= UNIFORM_VIEW
             if 'uProjection' in self.uniforms:
-                self.flags |= MAT_PROJECTION
+                self.flags |= UNIFORM_PROJECTION
             if 'mpv' in self.uniforms:
-                self.flags |= MAT_MPV
+                self.flags |= UNIFORM_MPV
+            if 'viewPos' in self.uniforms:
+                self.flags |= UNIFORM_CAMERA
             
             for uniform in self.uniforms:
                 print(f"Uniform {uniform} at {self.uniforms[uniform]}")
@@ -120,6 +153,13 @@ class Shader:
         location = self.uniforms.get(name)
         if location is not None:
             glUniformMatrix4fv(location, 1, GL_FALSE, matrix)
+        #else:
+        #    print(f"Uniform '{name}' not found.")
+
+    def set_matrix(self, name, matrix):
+        location = self.uniforms.get(name)
+        if location is not None:
+            glUniformMatrix4fv(location, 1, GL_FALSE, glm.value_ptr(matrix))
         #else:
         #    print(f"Uniform '{name}' not found.")
 

@@ -1,7 +1,7 @@
 from PIL import Image, ImageOps
 import numpy as np
 
-# Função para calcular o normal map a partir de uma imagem em tons de cinza
+
 def generate_normal_map(image, strength=1.0):
     # Converte a imagem para grayscale
     gray_image = ImageOps.grayscale(image)
@@ -30,7 +30,7 @@ def generate_normal_map(image, strength=1.0):
     grad_x *= strength
     grad_y *= strength
 
-    # Cria um normal map
+
     normals = np.zeros((pixels.shape[0], pixels.shape[1], 3), dtype=np.float32)
 
     normals[..., 0] = grad_x  # Componente X
@@ -59,17 +59,17 @@ def generate_specular_map(image):
 
     return specular_map
 
-filename = 'assets/defaultTexture.png'
+filename = 'assets/crypt/glass.jpg'
 image = Image.open(filename)
 
 name = filename.split(".")[0]
 directory = ''
 
-# Gerar o normal map
-normal_map = generate_normal_map(image, strength=1.0)
+
+normal_map = generate_normal_map(image, strength=0.6)
 normal_map.save(f"{directory}{name}_normal.png")
 
-# Gerar o specular map
+
 specular_map = generate_specular_map(image)
 specular_map.save(f"{directory}{name}_specular.png")
 

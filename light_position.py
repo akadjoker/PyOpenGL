@@ -42,11 +42,11 @@ tile_count = (10, 10)
 hill_height = 1.0
 hill_count = (1.0, 1.0)
 texture_repeat_count = (4.0, 4.0)
-plane = create_hill_plane_mesh(tile_size, tile_count, hill_height, hill_count, texture_repeat_count)
+plane = Builder.create_hill_plane_mesh(tile_size, tile_count, hill_height, hill_count, texture_repeat_count)
 
 #plane = create_plane(5,5,5,5)
-cube = create_cube()
-sphere = create_sphere(10, 10)
+cube = Builder.create_cube()
+sphere = Builder.create_sphere(10, 10)
 
 
 
@@ -61,7 +61,7 @@ Render.set_clear_mode(True)
 light = scene.create_point_light( glm.vec3(1.0, 1.0, 1.0), glm.vec3(0.0, 1.0, 0.0) )
 
 
-shader = light.shader
+
 
 camera = Camera(45.0,core.width / core.height)
 camera.set_perspective(45.0, 16.0 / 9.0, 0.25, 4000.0)
@@ -70,7 +70,7 @@ camera.rotate(pitch, yaw, 0.0)
 
 scene.set_camera(camera)
 
-floor = scene.create_model(shader)
+floor = scene.create_model()
 floor.add_material(Material(Render.get_texture("default"), Render.get_texture("default_specular")))
 floor.add_mesh(plane)
 #model.scale(20.0, 1.0, 20.0)
@@ -82,7 +82,7 @@ floor.add_mesh(plane)
 #     debug_borders=False)
 
 
-model = scene.create_model(shader)
+model = scene.create_model()
 model.add_material(Material(Render.get_texture("brickwall"), Render.get_texture("brickwall_specular")))
 model.add_mesh(cube)
 model.translate(0.0, 1.0, 0.0)
@@ -137,7 +137,7 @@ while core.run():
     Render.set_depth_test(True)
     Render.set_clear_mode(True)
 
-    scene.render()
+    scene.render_light(light)
     scene.update()
 
     pick = False

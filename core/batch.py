@@ -111,6 +111,11 @@ class Batch:
     def line3d(self, x1, y1, z1, x2, y2, z2):
         self.vertex3f(x1, y1, z1)
         self.vertex3f(x2, y2, z2)
+        
+    
+    def line3dv(self, v0, v1):
+        self.line3d(v0.x, v0.y, v0.z, v1.x, v1.y, v1.z)
+
 
 
     def set_clip(self, x, y, width, height):
@@ -137,11 +142,15 @@ class LinesBatch(Batch):
     def __init__(self, maxVertex):
         super().__init__(maxVertex)
 
+
+    def triangle2d(self, x0, y0, x1, y1, x2, y2):
+        self.line2d(x0, y0, x1, y1)
+        self.line2d(x1, y1, x2, y2)
+        self.line2d(x2, y2, x0, y0)
+
     def rectangle(self, x, y, width, height):
-        self.line2d(x, y, x + width, y)
-        self.line2d(x + width, y, x + width, y + height)
-        self.line2d(x + width, y + height, x, y + height)
-        self.line2d(x, y + height, x, y)
+        self.triangle2d(x + width, y + height, x + width, y, x, y)
+        self.triangle2d(x, y, x, y + height, x + width, y + height)
 
     def circle(self, x, y, radius, segments=36):
         angle_increment = 2 * math.pi / segments
@@ -305,10 +314,10 @@ class LinesBatch(Batch):
         self.vertex3f(box.min.x, box.max.y, box.min.z)
         self.vertex3f(box.min.x, box.max.y, box.max.z)
 
-    def triangle_3d (self, v1, v2, v3):
-        self.vertex3f(v1.x, v1.y, v1.z)
-        self.vertex3f(v2.x, v2.y, v2.z)
-        self.vertex3f(v3.x, v3.y, v3.z)
+    def triangle3d (self, v1, v2, v3):
+        self.line3d(v1.x, v1.y, v1.z, v2.x, v2.y, v2.z)
+        self.line3d(v2.x, v2.y, v2.z, v3.x, v3.y, v3.z)
+        self.line3d(v3.x, v3.y, v3.z, v1.x, v1.y, v1.z)
     
     def draw_transform_bounding_box(self,box,color,mat):
         self.set_color(color)
@@ -448,13 +457,13 @@ class FillBatch(Batch):
             self.vertex3f(x1, y1, self.depth)
             self.vertex3f(x2, y2, self.depth)
 
-    def triangle_3d (self, v1, v2, v3):
+    def triangle3d (self, v1, v2, v3):
         self.vertex3f(v1.x, v1.y, v1.z)
         self.vertex3f(v2.x, v2.y, v2.z)
         self.vertex3f(v3.x, v3.y, v3.z)
 
     def rectangle(self, x, y, width, height):
-        self.triangle2d(x, y, x + width, y, x + width, y + height)
+        self.triangle2d(x + width, y + height, x + width, y, x, y)
         self.triangle2d(x, y, x, y + height, x + width, y + height)
 
     def ellipse(self, x, y, radius_x, radius_y, segments=36):

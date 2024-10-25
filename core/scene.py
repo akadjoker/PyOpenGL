@@ -392,10 +392,9 @@ class Entity:
     
 
 class Model (Entity):
-    def __init__(self,shader,name="Model"):
+    def __init__(self,name="Model"):
         super().__init__()    
         self.meshes = []
-        self.shader = shader
         self.name = name
         self.box = BoundingBox()
         self.boxTransform = BoundingBox()
@@ -412,8 +411,8 @@ class Model (Entity):
         if self.numMaterials == 0:
             print("Model has no materials")
             return
-        mesh.set_attributes(self.shader.attributes)
         self.meshes.append(mesh)
+        mesh.update()
         self.box.add(mesh.box)
 
     
@@ -427,47 +426,45 @@ class Model (Entity):
     def update(self):
         self.boxTransform = self.box.transform(self.get_world_tform().matrix)
     
-    def render(self):
+    # def render(self):
+
+    #     if self.numMaterials == 0:
+    #         print("Model has no materials")
+    #         return
+
+    #     Render.set_shader(self.shader)
+    #     self.shader.apply()
+    #     if self.shader.contains(MAT_MODEL):
+    #         self.shader.set_matrix4fv("uModel", glm.value_ptr(self.get_world_tform().matrix))
+
+    #     if self.shader.contains(MAT_VIEW) and self.shader.contains(MAT_PROJECTION): 
+    #         self.shader.set_matrix4fv("uView", glm.value_ptr(Render.matrix[VIEW_MATRIX]))
+    #         self.shader.set_matrix4fv("uProjection", glm.value_ptr(Render.matrix[PROJECTION_MATRIX]))
+
+    #     for mesh in self.meshes:
+    #         box = mesh.box.transform(self.get_world_tform().matrix)
+    #         if not Render.is_box_in_frustum(box):
+    #             continue
+    #         material_index = mesh.material
+    #         if material_index >= self.numMaterials:
+    #             print("Invalid material index")
+    #             return
+    #         material = self.materials[material_index]
+    #         Render.render_mesh(mesh, material)
+
+    def render(self,shader,useMaterials=True):
 
         if self.numMaterials == 0:
             print("Model has no materials")
             return
 
-        Render.set_shader(self.shader)
-        self.shader.apply()
-        if self.shader.contains(MAT_MODEL):
-            self.shader.set_matrix4fv("uModel", glm.value_ptr(self.get_world_tform().matrix))
-
-        if self.shader.contains(MAT_VIEW) and self.shader.contains(MAT_PROJECTION): 
-            self.shader.set_matrix4fv("uView", glm.value_ptr(Render.matrix[VIEW_MATRIX]))
-            self.shader.set_matrix4fv("uProjection", glm.value_ptr(Render.matrix[PROJECTION_MATRIX]))
-
-        for mesh in self.meshes:
-            box = mesh.box.transform(self.get_world_tform().matrix)
-            if not Render.is_box_in_frustum(box):
-                continue
-            material_index = mesh.material
-            if material_index >= self.numMaterials:
-                print("Invalid material index")
-                return
-            material = self.materials[material_index]
-            Render.render_mesh(mesh, material)
-
-    def render_shader(self,shader,light,useMaterials=True):
-
-        if self.numMaterials == 0:
-            print("Model has no materials")
-            return
-
-        Render.set_shader(shader)
-        shader.apply()
-        if shader.contains(MAT_MODEL):
+        if shader.contains(UNIFORM_MODEL) :
             shader.set_matrix4fv("uModel", glm.value_ptr(self.get_world_tform().matrix))
-        light.update()
+            
 
         for mesh in self.meshes:
             box = mesh.box.transform(self.get_world_tform().matrix)
-            if not Render.is_box_in_frustum(box):
+            if not Render.is_box_in_frustum(box) and useMaterials:
                 continue
             material_index = mesh.material
             if material_index >= self.numMaterials:
@@ -477,30 +474,10 @@ class Model (Entity):
                 material = self.materials[material_index]
                 Render.render_mesh(mesh, material)            
             else:
-                Render.render_mesh_no_material(mesh)
-
-    def render_pass(self,shader,useMaterials=True):
-
-        if self.numMaterials == 0:
-            print("Model has no materials")
-            return
-
-        if shader.contains(MAT_MODEL):
-            shader.set_matrix4fv("uModel", glm.value_ptr(self.get_world_tform().matrix))
-
-        for mesh in self.meshes:
-            box = mesh.box.transform(self.get_world_tform().matrix)
-            if not Render.is_box_in_frustum(box):
-                continue
-            material_index = mesh.material
-            if material_index >= self.numMaterials:
-                print("Invalid material index")
-                return
-            if useMaterials:
                 material = self.materials[material_index]
-                Render.render_mesh(mesh, material)            
-            else:
-                Render.render_mesh_no_material(mesh)
+                if material.castShadow:
+                    Render.render_mesh_no_material(mesh)
+
 
 
     def debug(self,batch):
@@ -661,53 +638,61 @@ class Scene:
     def get_model(self, index):
         return self.nodes[index]
 
-    def create_model(self,shader, name="Model"):
-        model = Model(shader,name)
+    def create_model(self, name="Model"):
+        model = Model(name)
         self.nodes.append(model)
         return model
     
-    def create_terrain_block(self,shader,texture_image_path, heightmap_image_path, stretch_size, max_height, max_vtx_block_size, debug_borders=False, name="Terrain"):
-        model = Model(shader,name)
-        create_terrain_mesh(model,texture_image_path, heightmap_image_path, stretch_size, max_height, max_vtx_block_size, debug_borders)
+    def create_terrain_block(self,texture_image_path, heightmap_image_path, stretch_size, max_height, max_vtx_block_size, debug_borders=False, name="Terrain"):
+        model = Model(name)
+        mesh = Builder.create_terrain_mesh(model,texture_image_path, heightmap_image_path, stretch_size, max_height, max_vtx_block_size, debug_borders)
+        model.add_mesh(mesh)
         self.nodes.append(model)  
         return model
 
-    def render(self):
+
+
+
+    def render(self,shader,material=True):
         Render.set_matrix(VIEW_MATRIX, self.mainCamera.get_view_matrix())
         Render.set_matrix(PROJECTION_MATRIX, self.mainCamera.get_projection_matrix())
+        if shader.contains(UNIFORM_CAMERA):
+            shader.set_vector3f("viewPos", self.mainCamera.get_local_position())
+        if shader.contains(UNIFORM_VIEW) or shader.contains(UNIFORM_PROJECTION):
+            shader.set_matrix4fv("uView", glm.value_ptr(Render.matrix[VIEW_MATRIX]))
+            shader.set_matrix4fv("uProjection", glm.value_ptr(Render.matrix[PROJECTION_MATRIX]))
         for node in self.nodes:
             if node.visible:
                 box = node.get_bounding_box()
-                if Render.is_box_in_frustum(box):
-                    node.render()
+                if not material:#in shadow still need to render
+                    node.render(shader,False)
+                elif Render.is_box_in_frustum(box):
+                    node.render(shader,True)
 
-    def render_pass(self,shader,material):
+    def render_light(self,light,material=True):
         Render.set_matrix(VIEW_MATRIX, self.mainCamera.get_view_matrix())
         Render.set_matrix(PROJECTION_MATRIX, self.mainCamera.get_projection_matrix())
-        if shader.contains(MAT_VIEW) or shader.contains(MAT_PROJECTION):
+       
+        shader = light.shader
+        Render.set_shader(shader)
+        light.update()
+        if shader.contains(UNIFORM_CAMERA):
+            shader.set_vector3f("viewPos", self.mainCamera.get_local_position())
+
+        if shader.contains(UNIFORM_VIEW) or shader.contains(UNIFORM_PROJECTION):
             shader.set_matrix4fv("uView", glm.value_ptr(Render.matrix[VIEW_MATRIX]))
             shader.set_matrix4fv("uProjection", glm.value_ptr(Render.matrix[PROJECTION_MATRIX]))
         for node in self.nodes:
             if node.visible:
                 box = node.get_bounding_box()
                 if Render.is_box_in_frustum(box):
-                    node.render_pass(shader,material)
-
-    def render_all_with(self,shader,light,material):
-        if shader.contains(MAT_VIEW) or shader.contains(MAT_PROJECTION):
-            shader.set_matrix4fv("uView", glm.value_ptr(Render.matrix[VIEW_MATRIX]))
-            shader.set_matrix4fv("uProjection", glm.value_ptr(Render.matrix[PROJECTION_MATRIX]))
-        for node in self.nodes:
-            if node.visible:
-                box = node.get_bounding_box()
-                if Render.is_box_in_frustum(box):
-                    node.render_shader(shader,light,material)
+                    node.render(shader,material)
 
     def render_forward(self):
         Render.set_matrix(VIEW_MATRIX, self.mainCamera.get_view_matrix())
         Render.set_matrix(PROJECTION_MATRIX, self.mainCamera.get_projection_matrix())
         light = self.get_light(0)
-        self.render_all_with(light.shader,light,True)
+        self.render_light(light,True)
         Render.set_blend(True)
         Render.set_blend_mode(BlendMode.One)
         glDepthMask(False)
@@ -718,7 +703,7 @@ class Scene:
             if not light.enable:
                 continue
             light.camera = self.mainCamera.get_world_position()
-            self.render_all_with(light.shader,light,True)
+            self.render_light(light,True)
 
         glDepthFunc(GL_LESS)
         glDepthMask(True)
@@ -754,3 +739,40 @@ class Scene:
     def debug(self, batch):
         for node in self.nodes:
            node.debug(batch) 
+
+
+
+class LensFlare:
+    def __init__(self, light_pos_world, flare_textures):
+        self.light_pos_world  = light_pos_world
+        self.flare_textures = flare_textures
+        self.offsets = [-0.6, -0.4, -0.2, 0.0, 0.2, 0.4, 0.6]
+        self.scales = [0.2, 0.15, 0.25, 0.5, 0.3, 0.4, 0.2]
+        self.colors = [
+            glm.vec3(1.0, 0.8, 0.6), glm.vec3(1.0, 0.6, 0.6), glm.vec3(0.8, 0.7, 1.0),
+            glm.vec3(1.0, 1.0, 1.0), glm.vec3(0.6, 0.8, 1.0), glm.vec3(0.7, 1.0, 0.6), glm.vec3(1.0, 0.9, 0.5)
+        ]
+
+    def calculate_screen_position(self, view_matrix, projection_matrix):
+        light_pos_view = view_matrix * glm.vec4(self.light_pos_world, 1.0)
+        light_pos_clip = projection_matrix * light_pos_view
+        light_pos_ndc = glm.vec3(light_pos_clip) / light_pos_clip.w
+        light_pos_screen = glm.vec2(light_pos_ndc.x * 0.5 + 0.5, light_pos_ndc.y * 0.5 + 0.5)
+        return light_pos_screen
+
+    def render(self, view_matrix, projection_matrix):
+        light_pos_screen = self.calculate_screen_position(view_matrix, projection_matrix)
+        screen_center = glm.vec2(0.5, 0.5)
+        flare_dir = light_pos_screen - screen_center
+        for i, texture in enumerate(self.flare_textures):
+            element_pos = screen_center + flare_dir * self.offsets[i]
+            element_scale = self.scales[i]
+            element_color = self.colors[i]
+            self.render_flare_element(texture, element_pos, element_scale, element_color)
+
+
+    def render_flare_element(self, texture, position, scale, color):
+        x, y = (position[0] * 2 - 1), (position[1] * 2 - 1)
+        size = scale
+
+        

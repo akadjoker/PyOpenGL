@@ -71,13 +71,13 @@ class Gui:
         def init(maxBatch=1024):
             Gui.font = Render.defaultFont
             Gui.line = LinesBatch(maxBatch)
-            Gui.fill = FillBatch(maxBatch)
+            Gui.fill = FillBatch(maxBatch*2)
             Gui.sprites = SpriteBatch(maxBatch)
      
         
         @staticmethod
         def render(width=0, height=0):
-            
+            Render.set_texture(0, 0)
             Render.set_matrix(MODEL_MATRIX, glm.mat4(1.0))
             Render.set_matrix(VIEW_MATRIX, glm.mat4(1.0))
             view = glm.ortho(0.0, width , height, 0.0, -1.0, 1.0)
@@ -406,9 +406,9 @@ class Gui:
         def checkbox(x, y, label, isChecked):
             if not Gui.isBegin:
                 print("widgets must be called between Begin() and End()")
-                return isChecked
+                return  (isChecked, False)
             if not Gui.visible:
-                return isChecked
+                return  (isChecked, False)
             Gui.ID += 1
 
             X = Gui.X + x
@@ -424,7 +424,7 @@ class Gui:
                 Gui.FocusId = Gui.ID-1
                 Gui.fill.set_color(Gui.theme.backgroundColor)
                 Gui.font.set_color(Gui.theme.fontOverColor)
-                Render.set_cursor(Render.cursor_hand)
+                #Render.set_cursor(Render.cursor_hand)
             else:
                 Gui.fill.set_color(Gui.theme.backgroundColorOff)
                 Gui.font.set_color(Gui.theme.fontColor)
@@ -451,7 +451,7 @@ class Gui:
             Gui.font.set_size(Gui.theme.fontSize)
             Gui.font.set_color(Gui.theme.fontColor)
             Gui.font.set_allign(TextAlign.Left)
-            OFFY = Gui.font.get_max_width()
+ 
             Gui.font.write(X + size + 8, Y -2  , label)
 
             return (isChecked, isPressed)
@@ -477,7 +477,7 @@ class Gui:
             Gui.fill.set_color(Gui.theme.backgroundColor)
             Gui.fill.rectangle(X, Y + (HEIGHT // 2) - 2, WIDTH, 4)
 
-            slider_pos = int((value - min_value) / (max_value - min_value) * WIDTH)
+            slider_pos = ((value - min_value) / (max_value - min_value) * WIDTH)
             isOver = point_in_rect(mouse_x, mouse_y, X + slider_pos - (HEIGHT // 2), Y, HEIGHT, HEIGHT) and Gui._can_process()  
 
 

@@ -28,7 +28,7 @@ def get_angle_weight(v1, v2, v3):
 class Mesh:
     def __init__(self,material=0):
         self.material = material
-        self.attributes=[]
+        self.attributes=[Attribute.POSITION3D,Attribute.TEXCOORD0,Attribute.NORMAL]
         self.mode =GL_TRIANGLES
         self.vbo = {}
         self.vertices = []
@@ -50,7 +50,7 @@ class Mesh:
 
         self.flags |= 1
         self.flags |= 128
-
+        self.isBuilded = False
         self.tris = 0
         self.vrtx = 0
         self.no_verts = 0
@@ -74,6 +74,7 @@ class Mesh:
         if self.isConfigured:
             return
         self.isConfigured = True
+        self.isBuilded = True
         offset = 0
         glBindVertexArray(self.vao)
         for index in range(len(self.attributes)):
@@ -121,6 +122,16 @@ class Mesh:
                 offset += 3
         glBindVertexArray(0)        
 
+
+    def release (self):
+        if not self.isBuilded:
+            return
+        self.isBuilded = False
+        glDeleteVertexArrays(1, self.vao)
+        glDeleteBuffers(1, self.ebo)
+        for index in range(len(self.attributes)):
+            glDeleteBuffers(1, self.vbo[index])
+
     def update(self):
         self.configure()
         if self.flags==0:
@@ -156,7 +167,7 @@ class Mesh:
                 self.flags &= ~8
             elif attribute == Attribute.TANGENT and self.flags & 16:
                 glBindBuffer(GL_ARRAY_BUFFER, self.vbo[index])
-                glBufferData(GL_ARRAY_BUFFER, np.array(self.tangent, dtype=np.float32), GL_STATIC_DRAW)
+                glBufferData(GL_ARRAY_BUFFER, np.array(self.tangents, dtype=np.float32), GL_STATIC_DRAW)
                 self.flags &= ~16
             elif attribute == Attribute.BITANGENT and self.flags & 32:
                 glBindBuffer(GL_ARRAY_BUFFER, self.vbo[index])
@@ -250,22 +261,66 @@ class Mesh:
     def get_position(self,index):
         
         return glm.vec3(self.vertices[index*3],self.vertices[index*3+1],self.vertices[index*3+2])
+    
+    def get_tex_coords(self,index):
+        return glm.vec2(self.texcoord0[index*2],self.texcoord0[index*2+1])
 
-    def flip_triangles(self):
+    def invert_faces(self):
         for i in range(0, len(self.indices), 3):
             self.indices[i+1], self.indices[i+2] = self.indices[i+2], self.indices[i+1]
         self.flags |= 128  
+        self.recalculate_normals()
 
 
     
-    def debug(self, batch,cor):
+    def debug(self, batch,normals, tris,cor):
         batch.set_color(cor)
         for i in range(0, len(self.indices), 3):
             i0, i1, i2 = self.indices[i], self.indices[i+1], self.indices[i+2]
             v1 = glm.vec3(self.vertices[i0*3], self.vertices[i0*3+1], self.vertices[i0*3+2])
             v2 = glm.vec3(self.vertices[i1*3], self.vertices[i1*3+1], self.vertices[i1*3+2])
             v3 = glm.vec3(self.vertices[i2*3], self.vertices[i2*3+1], self.vertices[i2*3+2])
-            batch.triangle_3d(v1, v2, v3)
+            if tris:
+                batch.triangle_3d(v1, v2, v3)
+            if normals:
+                normal = glm.vec3(self.normals[i0*3], self.normals[i0*3+1], self.normals[i0*3+2])
+                batch.line_3d(v1, v1 + normal)
+                normal = glm.vec3(self.normals[i1*3], self.normals[i1*3+1], self.normals[i1*3+2])
+                batch.line_3d(v2, v2 + normal)
+                normal = glm.vec3(self.normals[i2*3], self.normals[i2*3+1], self.normals[i2*3+2])
+                batch.line_3d(v3, v3 + normal)
+
+    def debug_transform(self,matrix,batch,normals, tris,scale=1.0):
+        
+        for i in range(0, len(self.indices), 3):
+            i0, i1, i2 = self.indices[i], self.indices[i+1], self.indices[i+2]
+            v0 = glm.vec3(self.vertices[i0*3], self.vertices[i0*3+1], self.vertices[i0*3+2])
+            v1 = glm.vec3(self.vertices[i1*3], self.vertices[i1*3+1], self.vertices[i1*3+2])
+            v2 = glm.vec3(self.vertices[i2*3], self.vertices[i2*3+1], self.vertices[i2*3+2])
+            normal0 = glm.vec3(self.normals[i0*3], self.normals[i0*3+1], self.normals[i0*3+2]) * scale
+            normal1 = glm.vec3(self.normals[i1*3], self.normals[i1*3+1], self.normals[i1*3+2]) * scale
+            normal2 = glm.vec3(self.normals[i2*3], self.normals[i2*3+1], self.normals[i2*3+2]) * scale
+
+            v0_transformed = glm.vec3(matrix * glm.vec4(v0, 1.0))
+            v1_transformed = glm.vec3(matrix * glm.vec4(v1, 1.0))
+            v2_transformed = glm.vec3(matrix * glm.vec4(v2, 1.0))
+
+
+            n0_transformed = glm.vec3(matrix * glm.vec4(normal0, 0.0)) 
+            n1_transformed = glm.vec3(matrix * glm.vec4(normal1, 0.0)) 
+            n2_transformed = glm.vec3(matrix * glm.vec4(normal2, 0.0)) 
+
+            if tris:
+                batch.set_color(RED)
+                batch.triangle3d(v0_transformed, v1_transformed, v2_transformed)
+            
+            if normals:
+                 batch.set_color(GREEN)
+                 batch.line3dv(v0_transformed, v0_transformed + n0_transformed)
+                 batch.line3dv(v1_transformed, v1_transformed + n1_transformed)
+                 batch.line3dv(v2_transformed, v2_transformed + n2_transformed)
+
+
 
     def recalculate_normals(self, smooth=True, angle_weighted=False):
         if not self.vertices or not self.indices:
