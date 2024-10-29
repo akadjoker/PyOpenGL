@@ -165,7 +165,36 @@ class InstanceShader(Shader):
         self.create_shader(vertex,fragment)
 
 
+class StencilShader(Shader):
+    def __init__(self):
+        super().__init__()
+        self.attributes=[Attribute.POSITION2D] 
 
+        vertex="""#version 330
+
+            layout (location = 0) in vec2 aPos;
+
+
+
+            void main() {
+                gl_Position = vec4(aPos, 0.0, 1.0);
+
+            }
+        """
+
+        fragment="""#version 330
+
+  
+
+        
+        out vec4 FragColor;
+
+        void main() 
+        {
+            FragColor = vec4(0.0, 0.0, 0.0, 0.5);
+        }
+        """
+        self.create_shader(vertex,fragment)
 
 class ScreenShader(Shader):
     def __init__(self):
@@ -231,6 +260,51 @@ class DepthShader(Shader):
         
             }
         """
+        self.create_shader(vertex,fragment)
+
+
+class VolumeDepthShader(Shader):
+    def __init__(self):
+        super().__init__()
+        self.attributes=[Attribute.POSITION3D] 
+
+        vertex="""#version 330
+
+            layout (location = 0) in vec3 aPosition;
+
+            uniform mat4 uProjection;
+            uniform mat4 uView;
+   
+          
+     
+            void main() 
+            {
+
+              
+                gl_Position =    uProjection * uView  * vec4(aPosition, 1.0);
+            }
+
+
+        """
+
+        fragment="""#version 330
+           
+
+       out vec4 FragColor;
+
+        void main() 
+        {
+      
+             gl_FragColor = vec4(0.04, 0.28, 0.26, 1.0);
+          
+
+        }
+
+        """
+
+   
+
+
         self.create_shader(vertex,fragment)
 
 class PointDepthShader(Shader):
@@ -520,6 +594,10 @@ class SunShader(Shader):
         }
         """
         self.create_shader(vertex,fragment)
+        self.set_vector3f("lightColor", glm.vec3(1.0, 1.0, 1.0))
+        self.set_vector3f("objectColor",  glm.vec3(1.0, 1.0, 1.0))
+        self.set_float("ambientStrength",   0.5)
+        self.set_float("specularStrength",   0.8)
        
 
        
@@ -527,12 +605,6 @@ class SunShader(Shader):
     def apply(self):
         # light = Render.get_light(0)
 
-        # self.set_vector3f("viewPos",light.camera)
-        # self.set_vector3f("lightPos", light.position)
-        # self.set_vector3f("lightColor", light.color)
-        # self.set_vector3f("objectColor", light.object_color)
-        # self.set_float("ambientStrength", light.ambient_strength)
-        # self.set_float("specularStrength", light.specular_strength)
         pass
 
 
@@ -1066,8 +1138,9 @@ class SingleShadowShader(Shader):
 
     
         float CalculateShadowPCF(vec3 lightDir, vec3 normal,float cosTheta,float splitDistance);
-
+        float PCF(const vec4 projShadow);
         float CalculateShadowPoissonDisk(vec3 lightDir, vec3 normal,float cosTheta, float splitDistance);
+        float CalculateShadowRotatedPCF(vec3 lightDir, vec3 normal, float splitDistance);
 
         void main()
         {
@@ -1094,11 +1167,17 @@ class SingleShadowShader(Shader):
             vec3 halfwayDir = normalize(lightDir + viewDir);  
             spec = pow(max(dot(normal, halfwayDir), 0.0), 256.0);
             vec3 specular = spec * lightColor;
-            
+                    
+
+
+
            //float shadow = CalculateShadowPCF( lightDir,normal, cosTheta, 0.1);
-           float shadow =CalculateShadowPoissonDisk(lightDir,normal, cosTheta, 0.1);
+           // float shadow =CalculateShadowPoissonDisk(lightDir,normal, cosTheta, 0.1);
+            float shadow = CalculateShadowRotatedPCF(lightDir,normal, 0.1);
             
 
+            // Amostra a sombra com PCF
+            //float shadow = PCF(projShadow);
             
             vec3 lighting = (ambient + (1.0 - shadow) * (diffuse + specular)) * color; 
 
@@ -1122,6 +1201,35 @@ class SingleShadowShader(Shader):
 
             return bias;
         }
+        float CalculateShadowRotatedPCF(vec3 lightDir, vec3 normal, float splitDistance)
+        {
+            vec2 texelSize = 1.0 / textureSize(shadowMap, 0).xy;  // Obter o tamanho da shadow map
+            vec3 projCoords = (lightSpace.xyz / lightSpace.w) * 0.5 + 0.5;  // Normaliza as coordenadas de sombra
+
+            float currentDepth = projCoords.z;
+
+            // Se estiver fora do frustum da shadow map, não calcular sombra
+            if (currentDepth > 1.0)
+            {
+                return 0.0;
+            }
+
+            // Aplicar dynamic bias para evitar acne de sombras
+            float bias = dynamicBias(normal, lightDir, splitDistance, 0.005);
+
+            // Aplicar a técnica de PCF com grid rotacionada a 30°
+            float shadow = texture(shadowMap, projCoords.xy).r;
+            shadow += texture(shadowMap, projCoords.xy + vec2(-0.866 * texelSize.x,  0.5 * texelSize.y)).r;
+            shadow += texture(shadowMap, projCoords.xy + vec2(-0.866 * texelSize.x, -0.5 * texelSize.y)).r;
+            shadow += texture(shadowMap, projCoords.xy + vec2( 0.866 * texelSize.x, -0.5 * texelSize.y)).r;
+            shadow += texture(shadowMap, projCoords.xy + vec2( 0.866 * texelSize.x,  0.5 * texelSize.y)).r;
+
+            shadow /= 5.0;  // Normaliza para as 5 amostras
+
+            // Compara a profundidade para determinar a sombra final
+            return currentDepth - bias > shadow ? 1.0 : 0.0;
+        }
+
 
        float CalculateShadowPCF(vec3 lightDir,vec3 normal,float cosTheta,float splitDistance)
        {
@@ -1138,7 +1246,7 @@ class SingleShadowShader(Shader):
                 return 0.0;
             }
 
-            float bias = dynamicBias(normal, lightDir, splitDistance, 0.005);
+            float bias = dynamicBias(normal, lightDir, splitDistance, 0.001);
             // float bias = max(0.05 * (1.0 - cosTheta), 0.005); 
 //            float bias = max(0.05 * (1.0 - dot(normal, lightDir)), 0.005);
     //        float bias = max(0.05 * (1.0 - dot(normal, lightDir)), 0.01);  // ou 0.02
@@ -1208,6 +1316,23 @@ class SingleShadowShader(Shader):
             return shadow;
         }
 
+
+    float PCF(const vec4 projShadow)
+    {
+        vec2 shadowMapSize = 1.0 / textureSize(shadowMap, 0).xy;
+    
+        // 5-tap PCF com grid rotacionado a 30° (reduzido)
+        float offset = 0.5 * shadowMapSize.x;  // Reduz o offset para evitar sombras muito grandes
+
+
+        float shadow = texture(shadowMap, projShadow.xy).r;
+        shadow += texture(shadowMap, projShadow.xy + vec2(-0.866 * offset,  0.5 * offset)).r;
+        shadow += texture(shadowMap, projShadow.xy + vec2(-0.866 * offset, -0.5 * offset)).r;
+        shadow += texture(shadowMap, projShadow.xy + vec2( 0.866 * offset, -0.5 * offset)).r;
+        shadow += texture(shadowMap, projShadow.xy + vec2( 0.866 * offset,  0.5 * offset)).r;
+
+        return shadow / 5.0;
+    }
      
         """
         self.create_shader(vertex,fragment)

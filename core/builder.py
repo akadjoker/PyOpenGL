@@ -335,7 +335,7 @@ class Builder:
         return mesh
 
     @staticmethod
-    def create_plane(stacks, slices, tilesX, tilesY, material=0):
+    def create_tiles(stacks, slices, tilesX, tilesY, material=0):
 
         mesh = Mesh(material)
         min_point = glm.vec3(float('inf'), 0, float('inf'))
@@ -369,6 +369,23 @@ class Builder:
                 mesh.add_triangle(index, index + slices + 1, index + slices + 2)
                 mesh.add_triangle(index, index + slices + 2, index + 1)
 
+        
+        mesh.calculate_bounding_box()
+        
+        return mesh
+    @staticmethod
+    def create_plane(w,d, material=0):
+
+        mesh = Mesh(material)
+
+        mesh.add_vertex(-w/2.0,0.0,-d/2.0,0.0,1.0,0.0,0.0,1.0)
+        mesh.add_vertex(-w/2.0,0.0, d/2.0,0.0,0.0,0.0,0.0,1.0)
+        mesh.add_vertex( w/2.0,0.0, d/2.0,1.0,0.0,0.0,0.0,1.0)
+        mesh.add_vertex( w/2.0,0.0,-d/2.0,1.0,1.0,0.0,0.0,1.0)
+
+        mesh.add_triangle(0, 1, 2)
+        mesh.add_triangle(0, 2, 3)
+      
         
         mesh.calculate_bounding_box()
         

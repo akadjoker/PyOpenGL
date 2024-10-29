@@ -8,21 +8,6 @@ import glm
 import math
 
 
-def get_angle_weight(v1, v2, v3):
-    a = glm.distance2(v2, v3)
-    asqrt = math.sqrt(a)
-    b = glm.distance2(v1, v3)
-    bsqrt = math.sqrt(b)
-    c = glm.distance2(v1, v2)
-    csqrt = math.sqrt(c)
-    if bsqrt * csqrt == 0 or asqrt * csqrt == 0 or bsqrt * asqrt == 0:
-        return glm.vec3(1.0, 1.0, 1.0)
-
-    angle1 = math.acos((b + c - a) / (2 * bsqrt * csqrt))
-    angle2 = math.acos((-b + c + a) / (2 * asqrt * csqrt))
-    angle3 = math.acos((b - c + a) / (2 * bsqrt * asqrt))
-
-    return glm.vec3(angle1, angle2, angle3)
 
 
 class Mesh:
@@ -44,7 +29,7 @@ class Mesh:
         self.isConfigured = False
         self.data = 0
         self.box = BoundingBox()
-
+        self.silhouette= None
         self.vao = glGenVertexArrays(1)
         self.ebo = glGenBuffers(1)
 
@@ -131,6 +116,11 @@ class Mesh:
         glDeleteBuffers(1, self.ebo)
         for index in range(len(self.attributes)):
             glDeleteBuffers(1, self.vbo[index])
+
+    def set_dirty(self,flags):
+        self.flags |= flags
+
+        
 
     def update(self):
         self.configure()
@@ -281,14 +271,17 @@ class Mesh:
             v2 = glm.vec3(self.vertices[i1*3], self.vertices[i1*3+1], self.vertices[i1*3+2])
             v3 = glm.vec3(self.vertices[i2*3], self.vertices[i2*3+1], self.vertices[i2*3+2])
             if tris:
-                batch.triangle_3d(v1, v2, v3)
+                batch.triangle3d(v1, v2, v3)
             if normals:
-                normal = glm.vec3(self.normals[i0*3], self.normals[i0*3+1], self.normals[i0*3+2])
-                batch.line_3d(v1, v1 + normal)
-                normal = glm.vec3(self.normals[i1*3], self.normals[i1*3+1], self.normals[i1*3+2])
-                batch.line_3d(v2, v2 + normal)
-                normal = glm.vec3(self.normals[i2*3], self.normals[i2*3+1], self.normals[i2*3+2])
-                batch.line_3d(v3, v3 + normal)
+                if len(self.normals) == len(self.vertices):
+                    normal = glm.vec3(self.normals[i0*3], self.normals[i0*3+1], self.normals[i0*3+2])
+                    batch.line3dv(v1, v1 + normal)
+                    normal = glm.vec3(self.normals[i1*3], self.normals[i1*3+1], self.normals[i1*3+2])
+                    batch.line3dv(v2, v2 + normal)
+                    normal = glm.vec3(self.normals[i2*3], self.normals[i2*3+1], self.normals[i2*3+2])
+                    batch.line3dv(v3, v3 + normal)
+                else:
+                    print("normals are not defined")
 
     def debug_transform(self,matrix,batch,normals, tris,scale=1.0):
         
@@ -359,7 +352,7 @@ class Mesh:
             if smooth:
                 weight = glm.vec3(1.0, 1.0, 1.0)
                 if angle_weighted:
-                    weight = get_angle_weight(v1, v2, v3)
+                    weight = UtilMath.get_angle_weight(v1, v2, v3)
 
                 self.normals[i0*3]   += weight.x * normal.x
                 self.normals[i0*3+1] += weight.x * normal.y
@@ -742,4 +735,711 @@ class Mesh:
         quat_roll = glm.angleAxis(math.radians(roll), glm.vec3(0.0, 0.0, 1.0))   # Rotação ao redor do eixo Z
         combined_rotation = quat_yaw * quat_pitch * quat_roll
         self.transform(combined_rotation)
+        
+    def create_shadow_volume(self, light_position, is_directional=False, extrude_distance=10.0):
+        if not self.silhouette:
+            self.silhouette = Mesh()
+            self.silhouette.set_attributes([Attribute.POSITION3D])
+        else:
+            self.silhouette.vertices.clear()
+            self.silhouette.indices.clear()
+            self.silhouette.no_verts = 0
+
+     
+        # Lista de arestas e volume da sombra
+        arestas = set()  # Armazena arestas como pares de índices
+        
+        face_count = len(self.indices) // 3
+        for i in range(face_count):
+            # Vértices da face
+            v0 = self.get_position(self.indices[3 * i])
+            v1 = self.get_position(self.indices[3 * i + 1])
+            v2 = self.get_position(self.indices[3 * i + 2])
+
+            # Normal e orientação da face em relação à luz
+            face_normal = glm.normalize(glm.cross(v1 - v0, v2 - v0))
+            light_dir = glm.normalize(v0 - light_position) if not is_directional else glm.normalize(light_position)
+            is_facing_light = glm.dot(face_normal, light_dir) > 0
+
+            if is_facing_light:
+                # Adiciona o cap da face frontal e o back cap extrudado
+                self.add_cap(v0, v1, v2, light_position, is_directional, extrude_distance)
+
+                # Adiciona arestas visíveis para criação de volume
+                arestas.add(tuple(sorted((self.indices[3 * i], self.indices[3 * i + 1]))))
+                arestas.add(tuple(sorted((self.indices[3 * i + 1], self.indices[3 * i + 2]))))
+                arestas.add(tuple(sorted((self.indices[3 * i + 2], self.indices[3 * i]))))
+
+        # Adiciona volume extrudado para cada aresta
+        for a, b in arestas:
+            self.add_volume(a, b, light_position, is_directional, extrude_distance)
+
+        # Atualiza a silhueta com os novos vértices e triângulos
+        self.silhouette.update()
+        return self.silhouette
+
+    def add_cap(self, v0, v1, v2, light_position, is_directional, extrude_distance):
+        """Adiciona a face frontal e o back cap extrudado para luz posicional ou direcional."""
+        idx0 = self.silhouette.add_position(v0.x, v0.y, v0.z)
+        idx1 = self.silhouette.add_position(v1.x, v1.y, v1.z)
+        idx2 = self.silhouette.add_position(v2.x, v2.y, v2.z)
+        self.silhouette.add_triangle(idx0, idx1, idx2)
+
+        # Extrusão para o back cap
+        if is_directional:
+            v0_ext = v0 + glm.normalize(light_position) * extrude_distance
+            v1_ext = v1 + glm.normalize(light_position) * extrude_distance
+            v2_ext = v2 + glm.normalize(light_position) * extrude_distance
+        else:
+            v0_ext = v0 + glm.normalize(v0 - light_position) * extrude_distance
+            v1_ext = v1 + glm.normalize(v1 - light_position) * extrude_distance
+            v2_ext = v2 + glm.normalize(v2 - light_position) * extrude_distance
+
+        idx0_ext = self.silhouette.add_position(v0_ext.x, v0_ext.y, v0_ext.z)
+        idx1_ext = self.silhouette.add_position(v1_ext.x, v1_ext.y, v1_ext.z)
+        idx2_ext = self.silhouette.add_position(v2_ext.x, v2_ext.y, v2_ext.z)
+        self.silhouette.add_triangle(idx0_ext, idx1_ext, idx2_ext)
+
+    def add_volume(self, a, b, light_position, is_directional, extrude_distance):
+        """Extruda as arestas de borda para formar o volume de sombra."""
+        v0 = self.get_position(a)
+        v1 = self.get_position(b)
+
+        if is_directional:
+            v0_ext = v0 + glm.normalize(light_position) * extrude_distance
+            v1_ext = v1 + glm.normalize(light_position) * extrude_distance
+        else:
+            v0_ext = v0 + glm.normalize(v0 - light_position) * extrude_distance
+            v1_ext = v1 + glm.normalize(v1 - light_position) * extrude_distance
+
+        idx0 = self.silhouette.add_position(v0.x, v0.y, v0.z)
+        idx1 = self.silhouette.add_position(v1.x, v1.y, v1.z)
+        idx2 = self.silhouette.add_position(v1_ext.x, v1_ext.y, v1_ext.z)
+        idx3 = self.silhouette.add_position(v0_ext.x, v0_ext.y, v0_ext.z)
+
+        self.silhouette.add_triangle(idx0, idx1, idx2)
+        self.silhouette.add_triangle(idx0, idx2, idx3)
+
+
+# class MeshVolume:
+#     def __init__(self, mesh):
+
+#         self.mesh = mesh
+#         self.vao_volume = glGenVertexArrays(1)
+#         self.vbo_volume = glGenBuffers(1)
+#         self.vertices_volume = []
+        
+#     def compute_volume(self, light_position, thickness=5.0):
+#         """
+#         Computa o volume de sombra baseado na posição da luz.
+        
+#         Args:
+#             light_position: Vec3 com a posição da luz
+#             thickness: Distância de extrusão do volume
+#         """
+#         self.vertices_volume.clear()
+        
+#         # Encontrar arestas da silhueta
+#         silhouette_edges = self.find_silhouette_edges(light_position)
+        
+#         # Criar volume de sombra
+#         for edge in silhouette_edges:
+#             p1, p2 = edge
             
+#             # Calcular direções de extrusão normalizadas
+#             direction1 = glm.normalize(p1 - light_position)
+#             direction2 = glm.normalize(p2 - light_position)
+            
+#             # Extrudir vértices
+#             extruded_p1 = p1 + direction1 * thickness
+#             extruded_p2 = p2 + direction2 * thickness
+            
+#             # Criar quad usando dois triângulos
+#             # Primeiro triângulo
+#             self.vertices_volume.extend([
+#                 *p1,            # Vértice original 1
+#                 *extruded_p1,   # Vértice extrudido 1
+#                 *p2             # Vértice original 2
+#             ])
+            
+#             # Segundo triângulo
+#             self.vertices_volume.extend([
+#                 *p2,            # Vértice original 2
+#                 *extruded_p1,   # Vértice extrudido 1
+#                 *extruded_p2    # Vértice extrudido 2
+#             ])
+            
+#         # Configurar buffer
+#         self.configure_vbo()
+
+#     def configure_vbo(self):
+#         """Configura o VBO com os vértices do volume."""
+#         vertices = np.array(self.vertices_volume, dtype=np.float32)
+        
+#         glBindVertexArray(self.vao_volume)
+#         glBindBuffer(GL_ARRAY_BUFFER, self.vbo_volume)
+#         glBufferData(GL_ARRAY_BUFFER, vertices, GL_STATIC_DRAW)
+        
+#         # Configurar atributo de posição
+#         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, None)
+#         glEnableVertexAttribArray(0)
+        
+#         glBindVertexArray(0)
+#         glBindBuffer(GL_ARRAY_BUFFER, 0)
+
+#     def render(self):
+#         """Renderiza o volume de sombra."""
+#         glBindVertexArray(self.vao_volume)
+#         glDrawArrays(GL_TRIANGLES, 0, len(self.vertices_volume) // 3)
+#         glBindVertexArray(0)
+
+#     def find_silhouette_edges(self, light_position):
+#         """
+#         Encontra as arestas da silhueta baseado na posição da luz.
+        
+#         Args:
+#             light_position: Vec3 com a posição da luz
+            
+#         Returns:
+#             Set de tuplas contendo pares de vértices que formam as arestas da silhueta
+#         """
+#         edges = set()
+        
+#         # Iterar por todas as faces
+#         for i in range(0, len(self.mesh.indices), 3):
+#             # Obter vértices da face
+#             v0 = self.mesh.get_position(self.mesh.indices[i])
+#             v1 = self.mesh.get_position(self.mesh.indices[i+1])
+#             v2 = self.mesh.get_position(self.mesh.indices[i+2])
+            
+#             # Calcular normal da face
+#             edge1 = v1 - v0
+#             edge2 = v2 - v0
+#             normal = glm.normalize(glm.cross(edge1, edge2))
+            
+#             # Determinar se a face está voltada para a luz
+#             center = (v0 + v1 + v2) / 3.0
+#             light_dir = glm.normalize(light_position - center)
+#             is_front_facing = glm.dot(normal, light_dir) > 0
+            
+#             if is_front_facing:
+#                 # Adicionar arestas da face
+#                 self._add_edge(edges, tuple(v0), tuple(v1))
+#                 self._add_edge(edges, tuple(v1), tuple(v2))
+#                 self._add_edge(edges, tuple(v2), tuple(v0))
+        
+#         return edges
+
+#     def _add_edge(self, edges, v1, v2):
+#         """
+#         Adiciona ou remove uma aresta do conjunto de arestas.
+#         Arestas compartilhadas são removidas pois não fazem parte da silhueta.
+        
+#         Args:
+#             edges: Set de arestas
+#             v1, v2: Vértices que formam a aresta
+#         """
+#         edge = tuple(sorted((v1, v2)))
+#         if edge in edges:
+#             edges.remove(edge)
+#         else:
+#             edges.add(edge)
+
+
+# class MeshVolume:
+#     def __init__(self, mesh):
+#         self.mesh = mesh
+#         self.vao_volume = glGenVertexArrays(1)
+#         self.vbo_volume = glGenBuffers(1)
+#         self.vertices_volume = []
+#         self.edge_to_faces = {}
+#         self._build_edge_face_map()
+#         self.model_matrix = glm.mat4(1.0) 
+    
+#     def set_model_matrix(self, model_matrix):
+#         self.model_matrix = model_matrix
+    
+#     def _build_edge_face_map(self):
+#         self.edge_to_faces.clear()
+#         for i in range(0, len(self.mesh.indices), 3):
+#             face_idx = i // 3
+#             v0 = self.mesh.indices[i]
+#             v1 = self.mesh.indices[i + 1]
+#             v2 = self.mesh.indices[i + 2]
+            
+#             edges = [
+#                 tuple(sorted([v0, v1])),
+#                 tuple(sorted([v1, v2])),
+#                 tuple(sorted([v2, v0]))
+#             ]
+            
+#             for edge in edges:
+#                 if edge not in self.edge_to_faces:
+#                     self.edge_to_faces[edge] = []
+#                 self.edge_to_faces[edge].append(face_idx)
+
+#     def compute_volume(self, light_position, thickness=10.1):
+#         self.vertices_volume.clear()
+        
+#         # Transformar a luz para o espaço do modelo
+#         inv_model = glm.inverse(self.model_matrix)
+#         local_light_pos = inv_model * glm.vec4(light_position, 1.0)
+#         local_light_pos = glm.vec3(local_light_pos)
+        
+#         # Encontrar arestas da silhueta no espaço do modelo
+#         silhouette_edges = self.find_silhouette_edges_improved(local_light_pos)
+        
+#         for edge, (v1, v2) in silhouette_edges:
+#             # Obter posições dos vértices no espaço do modelo
+#             p1_local = self.mesh.get_position(v1)
+#             p2_local = self.mesh.get_position(v2)
+            
+#             # Transformar para espaço do mundo
+#             p1 = glm.vec3(self.model_matrix * glm.vec4(p1_local, 1.0))
+#             p2 = glm.vec3(self.model_matrix * glm.vec4(p2_local, 1.0))
+            
+#             # Calcular direções de extrusão no espaço do mundo
+#             dir1 = glm.normalize(p1 - light_position)
+#             dir2 = glm.normalize(p2 - light_position)
+            
+#             # Pontos extrudidos no espaço do mundo
+#             ext_p1 = p1 + dir1 * thickness
+#             ext_p2 = p2 + dir2 * thickness
+            
+#             # Face frontal
+#             self.vertices_volume.extend([
+#                 *p1, *p2, *ext_p1,  # Primeiro triângulo
+#                 *p2, *ext_p2, *ext_p1  # Segundo triângulo
+#             ])
+            
+#             # Face traseira (ordem inversa)
+#             self.vertices_volume.extend([
+#                 *p2, *p1, *ext_p1,  # Primeiro triângulo
+#                 *p2, *ext_p1, *ext_p2  # Segundo triângulo
+#             ])
+
+#         self.configure_vbo()
+
+#     def find_silhouette_edges_improved(self, light_position):
+#         silhouette_edges = []
+        
+#         for edge, faces in self.edge_to_faces.items():
+#             # Considerar arestas com uma ou duas faces
+#             if len(faces) >= 1:
+#                 v1, v2 = edge
+#                 p1 = self.mesh.get_position(v1)
+#                 p2 = self.mesh.get_position(v2)
+                
+#                 # Para arestas com uma face (borda do modelo)
+#                 if len(faces) == 1:
+#                     face_normal = self._get_face_normal(faces[0])
+#                     if self._is_edge_silhouette(p1, face_normal, light_position):
+#                         silhouette_edges.append((edge, (v1, v2)))
+                
+#                 # Para arestas com duas faces
+#                 elif len(faces) == 2:
+#                     face1_facing = self._is_face_facing_light(faces[0], light_position)
+#                     face2_facing = self._is_face_facing_light(faces[1], light_position)
+                    
+#                     if face1_facing != face2_facing:
+#                         silhouette_edges.append((edge, (v1, v2)))
+        
+#         return silhouette_edges
+
+#     def _get_face_normal(self, face_idx):
+#         idx = face_idx * 3
+#         v0 = self.mesh.get_position(self.mesh.indices[idx])
+#         v1 = self.mesh.get_position(self.mesh.indices[idx + 1])
+#         v2 = self.mesh.get_position(self.mesh.indices[idx + 2])
+        
+#         edge1 = v1 - v0
+#         edge2 = v2 - v0
+#         return glm.normalize(glm.cross(edge1, edge2))
+
+#     def _is_edge_silhouette(self, point, normal, light_position):
+#         to_light = glm.normalize(light_position - point)
+#         return glm.dot(normal, to_light) > 0
+
+#     def _is_face_facing_light(self, face_idx, light_position):
+#         normal = self._get_face_normal(face_idx)
+#         idx = face_idx * 3
+#         point = self.mesh.get_position(self.mesh.indices[idx])
+#         to_light = glm.normalize(light_position - point)
+#         return glm.dot(normal, to_light) > 0
+
+#     def configure_vbo(self):
+#         vertices = np.array(self.vertices_volume, dtype=np.float32)
+        
+#         glBindVertexArray(self.vao_volume)
+#         glBindBuffer(GL_ARRAY_BUFFER, self.vbo_volume)
+#         glBufferData(GL_ARRAY_BUFFER, vertices, GL_STATIC_DRAW)
+        
+#         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, None)
+#         glEnableVertexAttribArray(0)
+        
+#         glBindVertexArray(0)
+#         glBindBuffer(GL_ARRAY_BUFFER, 0)
+
+#     def render(self):
+#         glBindVertexArray(self.vao_volume)
+#         glDrawArrays(GL_TRIANGLES, 0, len(self.vertices_volume) // 3)
+#         #glDrawArrays(GL_LINES, 0, len(self.vertices_volume) // 3)
+#         glBindVertexArray(0)
+
+
+
+# class MeshVolume:
+#     def __init__(self, mesh):
+#         self.mesh = mesh
+#         self.vao_volume = glGenVertexArrays(1)
+#         self.vbo_volume = glGenBuffers(1)
+#         self.vertices_volume = []
+#         self.edge_to_faces = {}
+#         self.model_matrix = glm.mat4(1.0)
+#         self._build_edge_face_map()
+    
+#     def set_model_matrix(self, model_matrix):
+#         self.model_matrix = model_matrix
+    
+#     def _build_edge_face_map(self):
+#         self.edge_to_faces.clear()
+#         for i in range(0, len(self.mesh.indices), 3):
+#             face_idx = i // 3
+#             v0, v1, v2 = self.mesh.indices[i], self.mesh.indices[i + 1], self.mesh.indices[i + 2]
+#             edges = [tuple(sorted([v0, v1])), tuple(sorted([v1, v2])), tuple(sorted([v2, v0]))]
+            
+#             for edge in edges:
+#                 if edge not in self.edge_to_faces:
+#                     self.edge_to_faces[edge] = []
+#                 self.edge_to_faces[edge].append(face_idx)
+
+#     def compute_volume(self, light_position, thickness=10.1):
+#         self.vertices_volume.clear()
+#         inv_model = glm.inverse(self.model_matrix)
+#         local_light_pos = glm.vec3(inv_model * glm.vec4(light_position, 1.0))
+        
+#         silhouette_edges = self.find_silhouette_edges_improved(local_light_pos)
+        
+#         for edge, (v1, v2) in silhouette_edges:
+#             p1_local, p2_local = self.mesh.get_position(v1), self.mesh.get_position(v2)
+#             p1 = glm.vec3(self.model_matrix * glm.vec4(p1_local, 1.0))
+#             p2 = glm.vec3(self.model_matrix * glm.vec4(p2_local, 1.0))
+            
+#             dir1, dir2 = glm.normalize(p1 - light_position), glm.normalize(p2 - light_position)
+#             ext_p1, ext_p2 = p1 + dir1 * thickness, p2 + dir2 * thickness
+#             # self.vertices_volume.extend([
+#             #         *p1, *p2, *ext_p1,  # Primeiro triângulo
+#             #         *p2, *ext_p2, *ext_p1  # Segundo triângulo
+#             #     ])            
+#             self.vertices_volume.extend([
+#                 *p1, *p2, *ext_p1,  *p2, *ext_p2, *ext_p1,
+#                # *p2, *p1, *ext_p1,  *p2, *ext_p1, *ext_p2
+#             ])
+
+#         self.configure_vbo()
+
+#     def find_silhouette_edges_improved(self, light_position):
+#         silhouette_edges = []
+#         for edge, faces in self.edge_to_faces.items():
+#             if len(faces) >= 1:
+#                 v1, v2 = edge
+#                 p1, p2 = self.mesh.get_position(v1), self.mesh.get_position(v2)
+                
+#                 if len(faces) == 1:
+#                     face_normal = self._get_face_normal(faces[0])
+#                     if self._is_edge_silhouette(p1, face_normal, light_position):
+#                         silhouette_edges.append((edge, (v1, v2)))
+                
+#                 elif len(faces) == 2:
+#                     face1_facing = self._is_face_facing_light(faces[0], light_position)
+#                     face2_facing = self._is_face_facing_light(faces[1], light_position)
+#                     if face1_facing != face2_facing:
+#                         silhouette_edges.append((edge, (v1, v2)))
+        
+#         return silhouette_edges
+
+#     def _get_face_normal(self, face_idx):
+#         idx = face_idx * 3
+#         v0 = self.mesh.get_position(self.mesh.indices[idx])
+#         v1 = self.mesh.get_position(self.mesh.indices[idx + 1])
+#         v2 = self.mesh.get_position(self.mesh.indices[idx + 2])
+        
+#         return glm.normalize(glm.cross(v1 - v0, v2 - v0))
+
+#     def _is_edge_silhouette(self, point, normal, light_position):
+#         to_light = glm.normalize(light_position - point)
+#         return glm.dot(normal, to_light) > 0
+
+#     def _is_face_facing_light(self, face_idx, light_position):
+#         normal = self._get_face_normal(face_idx)
+#         idx = face_idx * 3
+#         point = self.mesh.get_position(self.mesh.indices[idx])
+#         to_light = glm.normalize(light_position - point)
+#         return glm.dot(normal, to_light) > 0
+
+#     def configure_vbo(self):
+#         vertices = np.array(self.vertices_volume, dtype=np.float32)
+        
+#         glBindVertexArray(self.vao_volume)
+#         glBindBuffer(GL_ARRAY_BUFFER, self.vbo_volume)
+#         glBufferData(GL_ARRAY_BUFFER, vertices.nbytes, vertices, GL_STATIC_DRAW)
+        
+#         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, None)
+#         glEnableVertexAttribArray(0)
+        
+#         glBindVertexArray(0)
+#         glBindBuffer(GL_ARRAY_BUFFER, 0)
+
+#     def render(self):
+#         glBindVertexArray(self.vao_volume)
+#         glDrawArrays(GL_TRIANGLES, 0, len(self.vertices_volume) // 3)
+#         glBindVertexArray(0)
+
+
+# class MeshVolume:
+#     def __init__(self, mesh):
+#         """
+#         Inicializa o volume de sombra para uma mesh.
+        
+#         Args:
+#             mesh: Objeto mesh contendo os vértices e índices
+#         """
+#         self.mesh = mesh
+#         self.vao_volume = glGenVertexArrays(1)
+#         self.vbo_volume = glGenBuffers(1)
+#         self.vertices_volume = []
+        
+#     def compute_volume(self, light_position, thickness=5.0):
+#         """
+#         Computa o volume de sombra baseado na posição da luz.
+        
+#         Args:
+#             light_position: Vec3 com a posição da luz
+#             thickness: Distância de extrusão do volume
+#         """
+#         self.vertices_volume.clear()
+        
+#         # Encontrar arestas da silhueta
+#         silhouette_edges = self.find_silhouette_edges(light_position)
+        
+#         # Criar volume de sombra
+#         for edge in silhouette_edges:
+#             p1, p2 = edge
+            
+#             # Calcular direções de extrusão normalizadas
+#             direction1 = glm.normalize(p1 - light_position)
+#             direction2 = glm.normalize(p2 - light_position)
+            
+#             # Extrudir vértices
+#             extruded_p1 = p1 + direction1 * thickness
+#             extruded_p2 = p2 + direction2 * thickness
+            
+#             # Criar quad usando dois triângulos
+#             # Primeiro triângulo
+#             self.vertices_volume.extend([
+#                 *p1,            # Vértice original 1
+#                 *extruded_p1,   # Vértice extrudido 1
+#                 *p2             # Vértice original 2
+#             ])
+            
+#             # Segundo triângulo
+#             self.vertices_volume.extend([
+#                 *p2,            # Vértice original 2
+#                 *extruded_p1,   # Vértice extrudido 1
+#                 *extruded_p2    # Vértice extrudido 2
+#             ])
+            
+#         # Configurar buffer
+#         self.configure_vbo()
+
+#     def configure_vbo(self):
+#         """Configura o VBO com os vértices do volume."""
+#         vertices = np.array(self.vertices_volume, dtype=np.float32)
+        
+#         glBindVertexArray(self.vao_volume)
+#         glBindBuffer(GL_ARRAY_BUFFER, self.vbo_volume)
+#         glBufferData(GL_ARRAY_BUFFER, vertices, GL_STATIC_DRAW)
+        
+#         # Configurar atributo de posição
+#         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, None)
+#         glEnableVertexAttribArray(0)
+        
+#         glBindVertexArray(0)
+#         glBindBuffer(GL_ARRAY_BUFFER, 0)
+
+#     def render(self):
+#         """Renderiza o volume de sombra."""
+#         glBindVertexArray(self.vao_volume)
+#         glDrawArrays(GL_TRIANGLES, 0, len(self.vertices_volume) // 3)
+#         glBindVertexArray(0)
+
+#     def find_silhouette_edges(self, light_position):
+#         """
+#         Encontra as arestas da silhueta baseado na posição da luz.
+        
+#         Args:
+#             light_position: Vec3 com a posição da luz
+            
+#         Returns:
+#             Set de tuplas contendo pares de vértices que formam as arestas da silhueta
+#         """
+#         edges = set()
+        
+#         # Iterar por todas as faces
+#         for i in range(0, len(self.mesh.indices), 3):
+#             # Obter vértices da face
+#             v0 = self.mesh.get_position(self.mesh.indices[i])
+#             v1 = self.mesh.get_position(self.mesh.indices[i+1])
+#             v2 = self.mesh.get_position(self.mesh.indices[i+2])
+            
+#             # Calcular normal da face
+#             edge1 = v1 - v0
+#             edge2 = v2 - v0
+#             normal = glm.normalize(glm.cross(edge1, edge2))
+            
+#             # Determinar se a face está voltada para a luz
+#             center = (v0 + v1 + v2) / 3.0
+#             light_dir = glm.normalize(light_position - center)
+#             is_front_facing = glm.dot(normal, light_dir) > 0
+            
+#             if is_front_facing:
+#                 # Adicionar arestas da face
+#                 self._add_edge(edges, tuple(v0), tuple(v1))
+#                 self._add_edge(edges, tuple(v1), tuple(v2))
+#                 self._add_edge(edges, tuple(v2), tuple(v0))
+        
+#         return edges
+
+#     def _add_edge(self, edges, v1, v2):
+#         """
+#         Adiciona ou remove uma aresta do conjunto de arestas.
+#         Arestas compartilhadas são removidas pois não fazem parte da silhueta.
+        
+#         Args:
+#             edges: Set de arestas
+#             v1, v2: Vértices que formam a aresta
+#         """
+#         edge = tuple(sorted((v1, v2)))
+#         if edge in edges:
+#             edges.remove(edge)
+#         else:
+#             edges.add(edge)
+
+class MeshVolume:
+    def __init__(self, mesh):
+        self.mesh = mesh
+        self.vao_volume = glGenVertexArrays(1)
+        self.vbo_volume = glGenBuffers(1)
+        self.vertices_volume = []
+        self.edge_to_faces = {}
+        self.model_matrix = glm.mat4(1.0)
+        self._build_edge_face_map()
+    
+    def set_model_matrix(self, model_matrix):
+        self.model_matrix = model_matrix
+    
+    def _build_edge_face_map(self):
+        self.edge_to_faces.clear()
+        for i in range(0, len(self.mesh.indices), 3):
+            face_idx = i // 3
+            v0, v1, v2 = self.mesh.indices[i], self.mesh.indices[i + 1], self.mesh.indices[i + 2]
+            edges = [tuple(sorted([v0, v1])), tuple(sorted([v1, v2])), tuple(sorted([v2, v0]))]
+            
+            for edge in edges:
+                if edge not in self.edge_to_faces:
+                    self.edge_to_faces[edge] = []
+                self.edge_to_faces[edge].append(face_idx)
+
+    def compute_volume(self, light_position, thickness=10.1):
+        self.vertices_volume.clear()
+        inv_model = glm.inverse(self.model_matrix)
+        local_light_pos = glm.vec3(inv_model * glm.vec4(light_position, 1.0))
+        
+        silhouette_edges = self.find_silhouette_edges_improved(local_light_pos)
+        
+        for edge, (v1, v2) in silhouette_edges:
+            # Obter posições dos vértices no espaço do modelo
+            p1_local, p2_local = self.mesh.get_position(v1), self.mesh.get_position(v2)
+            p1 = glm.vec3(self.model_matrix * glm.vec4(p1_local, 1.0))
+            p2 = glm.vec3(self.model_matrix * glm.vec4(p2_local, 1.0))
+            
+            # Calcular direções de extrusão no espaço do mundo
+            dir1 = glm.normalize(p1 - light_position)
+            dir2 = glm.normalize(p2 - light_position)
+            
+            # Pontos extrudidos no espaço do mundo
+            ext_p1 = p1 + dir1 * thickness
+            ext_p2 = p2 + dir2 * thickness
+
+            # Criar a geometria do volume com faces externas orientadas
+            # Face frontal
+            self.vertices_volume.extend([
+                *p1, *p2, *ext_p1,  # Primeiro triângulo
+                *p2, *ext_p2, *ext_p1  # Segundo triângulo
+            ])
+            
+            # Face traseira (oposta à face frontal, para manter orientação consistente)
+            self.vertices_volume.extend([
+                *p2, *p1, *ext_p1,  # Primeiro triângulo invertido
+                *p2, *ext_p1, *ext_p2  # Segundo triângulo invertido
+            ])
+
+        # Configurar o VBO para o volume de sombra
+        self.configure_vbo()
+
+    def find_silhouette_edges_improved(self, light_position):
+        silhouette_edges = []
+        for edge, faces in self.edge_to_faces.items():
+            if len(faces) >= 1:
+                v1, v2 = edge
+                p1, p2 = self.mesh.get_position(v1), self.mesh.get_position(v2)
+                
+                if len(faces) == 1:
+                    face_normal = self._get_face_normal(faces[0])
+                    if self._is_edge_silhouette(p1, face_normal, light_position):
+                        silhouette_edges.append((edge, (v1, v2)))
+                
+                elif len(faces) == 2:
+                    face1_facing = self._is_face_facing_light(faces[0], light_position)
+                    face2_facing = self._is_face_facing_light(faces[1], light_position)
+                    if face1_facing != face2_facing:
+                        silhouette_edges.append((edge, (v1, v2)))
+        
+        return silhouette_edges
+
+    def _get_face_normal(self, face_idx):
+        idx = face_idx * 3
+        v0 = self.mesh.get_position(self.mesh.indices[idx])
+        v1 = self.mesh.get_position(self.mesh.indices[idx + 1])
+        v2 = self.mesh.get_position(self.mesh.indices[idx + 2])
+        
+        return glm.normalize(glm.cross(v1 - v0, v2 - v0))
+
+    def _is_edge_silhouette(self, point, normal, light_position):
+        to_light = glm.normalize(light_position - point)
+        return glm.dot(normal, to_light) > 0
+
+    def _is_face_facing_light(self, face_idx, light_position):
+        normal = self._get_face_normal(face_idx)
+        idx = face_idx * 3
+        point = self.mesh.get_position(self.mesh.indices[idx])
+        to_light = glm.normalize(light_position - point)
+        return glm.dot(normal, to_light) > 0
+
+    def configure_vbo(self):
+        vertices = np.array(self.vertices_volume, dtype=np.float32)
+        
+        glBindVertexArray(self.vao_volume)
+        glBindBuffer(GL_ARRAY_BUFFER, self.vbo_volume)
+        glBufferData(GL_ARRAY_BUFFER, vertices.nbytes, vertices, GL_STATIC_DRAW)
+        
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, None)
+        glEnableVertexAttribArray(0)
+        
+        glBindVertexArray(0)
+        glBindBuffer(GL_ARRAY_BUFFER, 0)
+
+    def render(self):
+        glBindVertexArray(self.vao_volume)
+        glDrawArrays(GL_TRIANGLES, 0, 6)
+        glBindVertexArray(0)

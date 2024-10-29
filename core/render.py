@@ -97,6 +97,7 @@ class Render:
     cursor_cross = None
     current_cursor = None
     window = None
+    StencilValue=0
     shaders = {}
 
     @staticmethod
@@ -316,11 +317,22 @@ class Render:
     @staticmethod
     def render_mesh_no_material(mesh):
         if mesh.tris == 0 or mesh.vrtx == 0:
+            print("Mesh is empty")
             return
         glBindVertexArray(mesh.vao)
         glDrawElements(mesh.mode, mesh.tris, GL_UNSIGNED_INT, None)
         Render.triangles += mesh.tris // 3
         Render.vertices += mesh.vrtx
+
+    @staticmethod
+    def render_mesh_geometry(mesh):
+        if mesh.tris == 0 or mesh.vrtx == 0:
+            print("Mesh is empty")
+            return
+        glBindVertexArray(mesh.vao)
+        glDrawElements(GL_TRIANGLES_ADJACENCY, mesh.tris, GL_UNSIGNED_INT, None)
+        Render.triangles += mesh.tris // 3
+        Render.vertices += mesh.vrtx        
 
     @staticmethod
     def set_blend(enable):
@@ -566,6 +578,7 @@ class SingleRender:
         self.vertex(1.0, -1.0)
         self.vertex(-1.0, 1.0)
         self.vertex(1.0, 1.0)
+        self.init()
 
     def init(self):
         self.VAO = glGenVertexArrays(1)
@@ -615,8 +628,57 @@ class SingleRender:
 
         glBindVertexArray(self.VAO)
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
-        #glBindVertexArray(0)
 
+    def draw(self):
+        glBindVertexArray(self.VAO)
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
+        
+
+class FullScreenQuad:
+    def __init__(self):
+        self.vao=0
+        self.vbo=0
+        self.init()
+    
+    def init(self):
+        # Vértices para quad em NDC (Normalized Device Coordinates) shader em 2D sem matrix
+        # vertices = [
+        #     -1.0, -1.0,   0.0, 0.0,  
+        #      1.0, -1.0,   1.0, 0.0,  
+        #     -1.0,  1.0,   1.0, 1.0,  
+        #     1.0,   1.0,    0.0, 1.0   
+        # ]
+        vertices = [
+            1.0, 1.0, 
+             -1.0, 1.0,    
+            -1.0,  -1.0,  
+            1.0,   -1.0,    
+        ]
+
+        self.vao = glGenVertexArrays(1)
+        glBindVertexArray(self.vao)
+        
+
+        self.vbo = glGenBuffers(1)
+        glBindBuffer(GL_ARRAY_BUFFER, self.vbo)
+        glBufferData(GL_ARRAY_BUFFER, np.array(vertices, dtype=np.float32), GL_STATIC_DRAW)
+         
+   
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * 4, None)
+        glEnableVertexAttribArray(0)
+        # glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * 4, ctypes.c_void_p(2 * 4))
+        # glEnableVertexAttribArray(1)
+        
+        glBindVertexArray(0)
+        
+    def render(self):
+        glBindVertexArray(self.vao)
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4)
+        glBindVertexArray(0)
+        
+    def release(self):
+        glDeleteVertexArrays(1, [self.vao])
+        glDeleteBuffers(1, [self.vbo])
 
 
 class DepthTexture(Texture):
@@ -767,6 +829,74 @@ class DepthCubeTexture(Texture):
         super().release()
         glDeleteFramebuffers(1, [self.frame_buffer])
         glDeleteTextures(1, [self.id])
+
+
+
+
+class Stencil:
+    @staticmethod
+    def front():
+        # Configuração Inicial
+        midStencilVal = 128  # Valor intermediário no stencil buffer
+
+        # 1. Ativar o teste de stencil e limpar buffers
+        glEnable(GL_STENCIL_TEST)
+        glClearStencil(midStencilVal)             # Define o valor inicial do stencil buffer
+        glClear(GL_STENCIL_BUFFER_BIT)            # Limpa o stencil buffer com o valor inicial
+        glDepthMask(GL_FALSE)                     # Desativa escrita no depth buffer
+        glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE)  # Desativa escrita no color buffer
+        glEnable( GL_CULL_FACE )
+        # 2. Renderizar o Volume de Sombra
+
+        # Passo 1: Incrementar para Faces Traseiras (Z-fail)
+        glStencilFunc(GL_ALWAYS, midStencilVal, 0xFFFFFFFF) #~0 like 0xFFFFFFFF 
+        glStencilOp(GL_KEEP, GL_INCR_WRAP, GL_KEEP)          # Incrementa no depth fail
+        glCullFace(GL_BACK)                                  
+                               
+
+
+    @staticmethod
+    def back():
+        # Passo 2: Decrementar para Faces Frontais (Z-pass)
+        glStencilOp(GL_KEEP, GL_DECR_WRAP, GL_KEEP)          # Decrementa no depth fail
+        glCullFace(GL_FRONT)                                 # Culling das faces frontais
+
+
+
+    @staticmethod
+    def read():
+        midStencilVal = 128 
+        # 3. Restaurar Buffers para a Renderização Normal
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE)      # Reativa escrita no color buffer
+        glDepthMask(GL_TRUE)                                 # Reativa escrita no depth buffer
+
+        # 4. Renderizar a Parte Iluminada da Cena
+        glStencilFunc(GL_EQUAL, midStencilVal, 0xFFFFFFFF)   # Apenas onde o stencil == midStencilVal
+        glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP)               # Mantém o stencil inalterado
+        glCullFace(GL_BACK)
+
+
+    @staticmethod
+    def write():
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE)
+        glDepthMask(GL_TRUE)
+        glStencilFunc(GL_NOTEQUAL, 0, ~0)
+        glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP)
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        glDisable(GL_DEPTH_TEST)
+        #draw quad
+    
+    
+    @staticmethod
+    def end():
+        glStencilFunc(GL_ALWAYS, 0, 0xFFFFFFFF)  # Ignora o stencil em renderizações futuras
+        glDisable(GL_STENCIL_TEST)               # Desativa o teste de stencil
+        Render.set_cull(True)
+        Render.set_cull_mode(CullMode.Back)
+        Render.set_depth_test(True)
+
+   
 
 
 

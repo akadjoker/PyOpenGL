@@ -37,7 +37,8 @@ class Core:
 
         glfw.window_hint(glfw.CONTEXT_VERSION_MAJOR, 3)
         glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 3)
-        glfw.window_hint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
+        glfw.window_hint(glfw.OPENGL_PROFILE, glfw.OPENGL_COMPAT_PROFILE)
+        glfw.window_hint(glfw.STENCIL_BITS, 8)
 
         self.window = glfw.create_window(width, height, title, None, None)
         if not self.window:
@@ -74,6 +75,25 @@ class Core:
         Render.set_matrix(MODEL_MATRIX, glm.mat4(1.0))
         
         
+        max_texture_size = np.zeros(1, dtype=np.int32)
+        stencil_bits = np.zeros(1, dtype=np.int32)
+        glGetIntegerv(GL_STENCIL_BITS, stencil_bits)
+
+        version = glGetString(GL_VERSION).decode("utf-8")
+        renderer = glGetString(GL_RENDERER).decode("utf-8")
+        print("OpenGL Version:", version)
+        print("Renderer:", renderer)
+        Render.StencilValue = (stencil_bits[0]-1) ^ 2
+        glClearStencil(Render.StencilValue)
+        
+        
+        # glGetIntegerv(GL_MAX_TEXTURE_SIZE, max_texture_size)
+        # glGetIntegerv(GL_MAX_VIEWPORT_DIMS, max_viewport_dims)
+        # glGetIntegerv(GL_STENCIL_BITS, stencil_bits)
+        # glGetIntegerv(GL_DEPTH_BITS, depth_bits)
+        # glGetIntegerv(GL_MAX_LIGHTS, max_lights)
+        
+
         fontData = base64.b64decode(defaultFontData).decode('utf-8')
         texture = Texture2D()
         texture.decode(defaultFontImage)

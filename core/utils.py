@@ -40,6 +40,24 @@ class UtilMath:
         return angle_deg
 
     @staticmethod
+    def get_angle_weight(v1, v2, v3):
+        a = glm.distance2(v2, v3)
+        asqrt = math.sqrt(a)
+        b = glm.distance2(v1, v3)
+        bsqrt = math.sqrt(b)
+        c = glm.distance2(v1, v2)
+        csqrt = math.sqrt(c)
+        if bsqrt * csqrt == 0 or asqrt * csqrt == 0 or bsqrt * asqrt == 0:
+            return glm.vec3(1.0, 1.0, 1.0)
+
+        angle1 = math.acos((b + c - a) / (2 * bsqrt * csqrt))
+        angle2 = math.acos((-b + c + a) / (2 * asqrt * csqrt))
+        angle3 = math.acos((b - c + a) / (2 * bsqrt * asqrt))
+
+        return glm.vec3(angle1, angle2, angle3)
+
+
+    @staticmethod
     def ray_from_mouse(mouse_x, mouse_y, viewport_width, viewport_height, view_matrix, projection_matrix):
         # Convertendo coordenadas de tela para NDC (Normalized Device Coordinates)
         x = (2.0 * mouse_x) / viewport_width - 1.0

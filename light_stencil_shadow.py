@@ -16,6 +16,22 @@ import glm
 import math   
 
 
+
+def startStencil():
+    glEnable(GL_STENCIL_TEST)
+    glClearStencil(Render.StencilValue)
+    glClear(GL_STENCIL_BUFFER_BIT)
+    glDepthMask(GL_FALSE)
+    glColorMask( GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE )
+    glEnable( GL_CULL_FACE )
+
+def endStencil():
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE)
+    glDepthMask(GL_TRUE)
+    glStencilOp( GL_KEEP, GL_KEEP, GL_KEEP )
+    glDisable(GL_STENCIL_TEST)
+    
+
 SCREEN_WIDTH = 1024
 SCREEN_HEIGHT = 920
 
@@ -43,13 +59,13 @@ tile_count = (10, 10)
 hill_height = 1.0
 hill_count = (1.0, 1.0)
 texture_repeat_count = (4.0, 4.0)
-plane = Builder.create_hill_plane_mesh(tile_size, tile_count, hill_height, hill_count, texture_repeat_count)
+plane = Builder.create_plane(50,50)
 
 #plane = create_plane(5,5,5,5)
 cube = Builder.create_cube()
-sphere = Builder.create_sphere(10, 10)
-mesh = Builder.load_obj("assets/room.obj")
-mesh.rotate(0,90,0)
+room =Builder.create_cube()
+# # Builder.load_obj("assets/room.obj")
+#room.rotate(0,90,0)
 
 Render.set_blend(False)
 Render.set_depth_test(True)
@@ -66,19 +82,21 @@ Render.set_clear_mode(True)
 
 #render to depth buffer
 
-buffer = DepthTexture()
-buffer.init(2048, 2048)
-depthShader = DepthShader()
+
+
+
+depthShader = VolumeDepthShader()
 
 
 #normal shader
-shader = SingleShadowShader()
+shader = SunShader()
 
 
-#for debug shadow
-screenShader = ScreenShader()
-quadrender = SingleRender()
-quadrender.init()
+#for stancil
+stencilShader = StencilShader()
+quadrender = FullScreenQuad()
+
+
 
 camera = Camera(45.0,core.width / core.height)
 camera.set_perspective(45.0, 16.0 / 9.0, 0.25, 4000.0)
@@ -90,7 +108,7 @@ scene.set_camera(camera)
 floor = scene.create_model()
 floor.add_material(Material(Render.get_texture("default")))
 floor.add_mesh(plane)
-floor.add_mesh(mesh)
+
 #model.scale(20.0, 1.0, 20.0)
 
 # terrain = scene.create_terrain_block(shader,"assets/terrain-texture.jpg","assets/terrain-heightmap.png", 
@@ -105,6 +123,12 @@ model.add_material(Material(Render.get_texture("brickwall")))
 model.add_mesh(cube)
 model.translate(0.0, 1.0, 0.0)
 
+model2 = scene.create_model()
+model2.add_material(Material(Render.get_texture("brickwall")))
+model2.add_mesh(room)
+model2.translate(0.0, 0.0, 0.0)
+model2.scale(20.0, 0.1, 20.0)
+
 
 mouseSensitivity = 90
 
@@ -115,16 +139,22 @@ lines = LinesBatch(1024*8)
 position = glm.vec3(0.0, 5.0, 0.0)
 range = 100.0
 
-lightPos = glm.vec3(-2.0, 4.0, -1.0)
+lightPos = glm.vec3(-2.0, 4.0, 2.0)
 showQuad = False
 showGrid = False
+
+volumes =[]
+volumes.append(MeshVolume(cube))
+
+glEnable(GL_DEPTH_TEST)
+glEnable(GL_STENCIL_TEST)
 while core.run():
     
     Render.clear()
 
   
 
-    speed = core.get_delta_time() * 125
+    speed = 1
 
     if Input.mouse_down(0) and not Gui.has_focus():
         yaw   += Input.get_mouse_delta_x()  *  mouseSensitivity
@@ -150,10 +180,6 @@ while core.run():
     model.turn(0,1,0)
     
 
-    Render.set_blend(False)
-    Render.set_depth_test(True)
-    Render.set_clear_mode(True)
-
 
     scene.update()
 
@@ -162,48 +188,96 @@ while core.run():
 
     size = 20
 
-    lightProjection = glm.ortho(-size, size, -size, size,  near_plane, far_plane)
-    lightView = glm.lookAt(lightPos, glm.vec3(0.0, 0.0, 0.0), glm.vec3(0.0, 1.0, 0.0))
-    lightSpaceMatrix = lightProjection * lightView
-    
-    Render.set_shader(depthShader)
+  
 
-    depthShader.set_matrix4fv("uLightSpaceMatrix", glm.value_ptr(lightSpaceMatrix))
-    buffer.begin()
-    scene.render(depthShader,False)
     
-    buffer.end()
 
     Render.set_viewport(0, 0, core.width, core.height)
     Render.clear()
 
 
+  
+
+
+    glEnable(GL_CULL_FACE)
+    if showGrid:
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
+    
+   
     Render.set_shader(shader)
     shader.set_vector3f("lightPos", lightPos)
-    shader.set_vector3f("viewPos", camera.get_local_position())
-    shader.set_matrix4fv("uLightSpaceMatrix", glm.value_ptr(lightSpaceMatrix))
-    shader.set_int("diffuseMap", 0)
-    shader.set_int("shadowMap", 1)
-
-    # glActiveTexture(GL_TEXTURE0)
-    # glBindTexture(GL_TEXTURE_2D, mainTexture.id)
-    # glActiveTexture(GL_TEXTURE1)
-    # glBindTexture(GL_TEXTURE_2D, buffer.color)
-    #Render.set_texture(mainTexture.id,0)
-    Render.set_texture(buffer.id,1)
-    
     scene.render(shader)
 
-    glActiveTexture(GL_TEXTURE1)
-    glBindTexture(GL_TEXTURE_2D, 0)
+    for volume in volumes:
+        volume.compute_volume(lightPos, thickness=50.0)
+        #volume.set_model_matrix(model.get_matrix())
+
+
+    Render.set_shader(depthShader)
+    depthShader.set_matrix4fv("uView", glm.value_ptr(Render.matrix[VIEW_MATRIX]))
+    depthShader.set_matrix4fv("uProjection", glm.value_ptr(Render.matrix[PROJECTION_MATRIX]))
+    if showQuad:
+        for volume in volumes:
+            volume.render()
+
+  
+
+    
+    #glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
+    
+    midStencilVal =5#Render.StencilValue
+    glClearStencil(0)
+    glClear(GL_STENCIL_BUFFER_BIT)
+    
+    # Configurar stencil test
+    glEnable(GL_STENCIL_TEST)
+    glDepthMask(GL_FALSE)  # Desabilitar escrita no depth buffer
+    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE)  # Desabilitar escrita no color buffer
+    
+    # Garantir que o depth test está habilitado e configurado corretamente
+    glEnable(GL_DEPTH_TEST)
+    glDepthFunc(GL_LEQUAL)
+    
+    # Primeira passagem - faces traseiras
+    glCullFace(GL_FRONT)
+    glStencilFunc(GL_ALWAYS, 0, ~0)
+    glStencilOp(GL_KEEP, GL_INCR_WRAP, GL_KEEP)  # Incrementar no depth fail
+    
+    for volume in volumes:
+        volume.render()
+    
+    # Segunda passagem - faces frontais
+    glCullFace(GL_BACK)
+    glStencilOp(GL_KEEP, GL_DECR_WRAP, GL_KEEP)  # Decrementar no depth fail
+    
+    for volume in volumes:
+        volume.render()
+    
+    # Configurar para renderizar o quad das sombras
+    glDepthMask(GL_TRUE)  # Reabilitar escrita no depth buffer
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE)  # Reabilitar escrita no color buffer
+    glStencilFunc(GL_NOTEQUAL, 0, ~0)  # Renderizar onde stencil != 0
+    glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP)
+    
+    # Configurar blending para as sombras
+    glEnable(GL_BLEND)
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+    
+    # Render the final shadowed quad
+    Render.set_shader(stencilShader)
+    quadrender.render()
+    
+    # Restore previous state
+
+    glDisable(GL_STENCIL_TEST)
+    glClear(GL_STENCIL_BUFFER_BIT)
+
+    glDisable(GL_DEPTH_TEST)
 
 
 
 
-
-
-
-    pick = False
+    # pick = False
     
 
 
@@ -212,19 +286,19 @@ while core.run():
     Render.set_blend(True)
     Render.set_depth_test(False)
     Render.set_blend_mode(BlendMode.NONE)
-    Render.set_clear_mode(True)
-    Render.set_matrix(MODEL_MATRIX, glm.mat4(1.0))
-    if showGrid:
-        lines.grid(10, 10, True)
+    Render.set_matrix(MODEL_MATRIX, glm.mat4(100.0))
+    # if showGrid:
+    #     lines.grid(10, 10, True)
 
-    #cube.debug_transform(model.get_world_tform().matrix,lines,True,True,0.5)
+    lines.sphere(lightPos.x,lightPos.y,lightPos.z,0.4)
+
+    # for volume in volumes:
+    #     volume.debug(lines,False,True,RED)
 
     lines.render() 
 
     #2d stuff
-    Render.set_clear_mode(False)
-    Render.set_depth_test(False)
-    Render.set_blend(True)
+    #Render.set_clear_mode(False)
     Render.set_blend_mode(BlendMode.Normal)
 
 
@@ -257,20 +331,19 @@ while core.run():
         # light.ambient.g = light.ambient.r
         # light.ambient.b = light.ambient.r
 
-        showQuad,_ = Gui.checkbox(5, 160, "Show quad", showQuad)
+
         showGrid,_ = Gui.checkbox(5, 180, "Show grid", showGrid)
+        showQuad,_ = Gui.checkbox(5, 200, "Show volume", showQuad)
 
     Gui.end()
 
     Gui.render(core.width , core.height)
 
 
-    if showQuad:
-        Render.set_shader(screenShader)
-        Render.set_texture(buffer.id, 0)
-        quadrender.render(0.0,0.0,1.0,1.0)
 
-
+    Render.set_cull(True)
+    Render.set_cull_mode(CullMode.Back)
+    Render.set_depth_test(True)
 
 
 

@@ -76,6 +76,9 @@ class Entity:
     def animate(self,time):
         pass
 
+    def get_matrix(self):
+        return self.world_tform.matrix
+
     # Métodos para definir transformações locais
     def set_local_position(self, v):
         self.local_pos = v
@@ -475,13 +478,13 @@ class Model (Entity):
         if self.numMaterials == 0:
             print("Model has no materials")
             return
-
+        mat = self.get_world_tform().matrix
         if shader.contains(UNIFORM_MODEL) :
-            shader.set_matrix4fv("uModel", glm.value_ptr(self.get_world_tform().matrix))
+            shader.set_matrix4fv("uModel", glm.value_ptr(mat))
             
 
         for mesh in self.meshes:
-            box = mesh.box.transform(self.get_world_tform().matrix)
+            box = mesh.box.transform(mat)
             if not Render.is_box_in_frustum(box) and useMaterials:
                 continue
             material_index = mesh.material
@@ -496,6 +499,17 @@ class Model (Entity):
                 if material.castShadow:
                     Render.render_mesh_no_material(mesh)
 
+    def render_geometry(self,shader):
+        if shader.contains(UNIFORM_MODEL) :
+            mat = self.get_world_tform().matrix
+            scale = glm.scale(glm.mat4(1.0),glm.vec3(1.0,0.1,1.0))
+            final = mat * scale
+            shader.set_matrix4fv("uModel", glm.value_ptr(final))
+        for mesh in self.meshes:
+            box = mesh.box.transform(mat)
+            if not Render.is_box_in_frustum(box):
+                continue
+            Render.render_mesh_no_material(mesh)
 
 
     def debug(self,batch):
@@ -694,6 +708,20 @@ class Scene:
                     node.render(shader,False)
                 elif Render.is_box_in_frustum(box):
                     node.render(shader,True)
+
+    def render_reometry(self,shader):
+        Render.set_matrix(VIEW_MATRIX, self.mainCamera.get_view_matrix())
+        Render.set_matrix(PROJECTION_MATRIX, self.mainCamera.get_projection_matrix())
+        if shader.contains(UNIFORM_CAMERA):
+            shader.set_vector3f("viewPos", self.mainCamera.get_local_position())
+        if shader.contains(UNIFORM_VIEW) or shader.contains(UNIFORM_PROJECTION):
+            shader.set_matrix4fv("uView", glm.value_ptr(Render.matrix[VIEW_MATRIX]))
+            shader.set_matrix4fv("uProjection", glm.value_ptr(Render.matrix[PROJECTION_MATRIX]))
+        for node in self.nodes:
+            if node.visible:
+                box = node.get_bounding_box()
+                if Render.is_box_in_frustum(box):
+                    node.render_geometry(shader)
 
     def render_light(self,light,material=True):
         Render.set_matrix(VIEW_MATRIX, self.mainCamera.get_view_matrix())
