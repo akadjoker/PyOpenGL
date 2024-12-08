@@ -154,8 +154,10 @@ class LinesBatch(Batch):
         self.line3dv(v3, v1)
 
     def rectangle(self, x, y, width, height):
-        self.triangle2d(x + width, y + height, x + width, y, x, y)
-        self.triangle2d(x, y, x, y + height, x + width, y + height)
+        self.line2d(x, y, x + width, y)
+        self.line2d(x, y + height, x + width, y + height)
+        self.line2d(x, y, x, y + height)
+        self.line2d(x + width, y, x + width, y + height)
 
     def circle(self, x, y, radius, segments=36):
         angle_increment = 2 * math.pi / segments
