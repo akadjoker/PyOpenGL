@@ -233,25 +233,22 @@ while core.run():
 
   
 
-    # Configurar stencil test
-    glEnable(GL_STENCIL_TEST)
-    glClearStencil(0)
-    glClear(GL_STENCIL_BUFFER_BIT)
     
+    glEnable(GL_STENCIL_TEST)
     glStencilMask(~0)
     glStencilFunc(GL_ALWAYS, 0, ~0)
     glDepthFunc(GL_LESS)
-    glDepthMask(GL_FALSE)
-    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE)
+    glDepthMask(GL_FALSE) 
+    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE) 
     glEnable(GL_CULL_FACE)
-    #glDisable(GL_DEPTH_TEST)
+
+
 
     #zfail
     # glCullFace(GL_FRONT)
     # glStencilOp(GL_KEEP, GL_INCR_WRAP, GL_KEEP)
     # for volume in volumes:
     #     volume.render()
-  
     # glCullFace(GL_BACK)
     # glStencilOp(GL_KEEP, GL_DECR_WRAP, GL_KEEP)
     # for volume in volumes:
@@ -262,7 +259,6 @@ while core.run():
     glStencilOp(GL_KEEP, GL_KEEP, GL_INCR_WRAP)
     for volume in volumes:
         volume.render()
-  
     glCullFace(GL_FRONT)
     glStencilOp(GL_KEEP, GL_KEEP, GL_DECR_WRAP)
     for volume in volumes:
@@ -279,7 +275,6 @@ while core.run():
     glCullFace(GL_BACK)
     glStencilFunc(GL_NOTEQUAL, 0, 0xffffff)
     glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP)
-
     # Render the final shadowed quad
     Render.set_shader(stencilShader)
     quadrender.render()
@@ -308,7 +303,7 @@ while core.run():
 
     lines.sphere(lightPos.x,lightPos.y,lightPos.z,0.4)
 
-    #volumes[0].debug(lines)
+    volumes[0].debug(lines)
 
 
 

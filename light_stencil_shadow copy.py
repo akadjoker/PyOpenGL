@@ -89,7 +89,7 @@ depthShader = VolumeDepthShader()
 
 
 #normal shader
-shader = VolumeColorShader()
+shader = SunShader()
 
 
 #for stancil
@@ -144,7 +144,7 @@ showQuad = False
 showGrid = False
 
 volumes =[]
-volumes.append(MeshVolume())
+volumes.append(MeshVolume(cube))
 glEnable(GL_DEPTH_TEST)
 glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE)
 glEnable(GL_BLEND)
@@ -192,8 +192,6 @@ while core.run():
 
   
 
-    glEnable(GL_CULL_FACE)
-    glEnable(GL_DEPTH_TEST)
     
 
     Render.set_viewport(0, 0, core.width, core.height)
@@ -203,95 +201,81 @@ while core.run():
   
 
 
+    glEnable(GL_CULL_FACE)
+    glEnable(GL_DEPTH_TEST)
     if showGrid:
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
     
    
     Render.set_shader(shader)
-    shader.set_vector3f("objectColor", glm.vec3(1.0, 1.0, 0.31))
-    scene.render_index(0,shader)
-    shader.set_vector3f("objectColor", glm.vec3(1.0, 1.0, 1.0))
-    scene.render_index(2,shader)
-    shader.set_vector3f("objectColor", glm.vec3(1.0, 0.5, 0.31))
-    scene.render_index(1,shader)
-    
+    shader.set_vector3f("lightPos", lightPos)
+    scene.render(shader)
+
     for volume in volumes:
-        volume.update_volume(lightPos,False, model.get_matrix(), cube)
+        volume.compute_volume(lightPos, thickness=50.0)
         #volume.set_model_matrix(model.get_matrix())
 
-    glCullFace(GL_BACK)
-    #glDisable(GL_CULL_FACE)
 
     Render.set_shader(depthShader)
     depthShader.set_matrix4fv("uView", glm.value_ptr(Render.matrix[VIEW_MATRIX]))
     depthShader.set_matrix4fv("uProjection", glm.value_ptr(Render.matrix[PROJECTION_MATRIX]))
-    #depthShader.set_matrix4fv("uModel", glm.value_ptr())
-    
     if showQuad:
         for volume in volumes:
             volume.render()
 
   
 
-    # Configurar stencil test
-    glEnable(GL_STENCIL_TEST)
+    
+    #glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
+    
+    midStencilVal =5#Render.StencilValue
     glClearStencil(0)
     glClear(GL_STENCIL_BUFFER_BIT)
     
-    glStencilMask(~0)
-    glStencilFunc(GL_ALWAYS, 0, ~0)
-    glDepthFunc(GL_LESS)
-    glDepthMask(GL_FALSE)
-    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE)
-    glEnable(GL_CULL_FACE)
-    #glDisable(GL_DEPTH_TEST)
-
-    #zfail
-    # glCullFace(GL_FRONT)
-    # glStencilOp(GL_KEEP, GL_INCR_WRAP, GL_KEEP)
-    # for volume in volumes:
-    #     volume.render()
-  
-    # glCullFace(GL_BACK)
-    # glStencilOp(GL_KEEP, GL_DECR_WRAP, GL_KEEP)
-    # for volume in volumes:
-    #     volume.render()
-
-    #zpass
-    glCullFace(GL_BACK)
-    glStencilOp(GL_KEEP, GL_KEEP, GL_INCR_WRAP)
-    for volume in volumes:
-        volume.render()
-  
+    # Configurar stencil test
+    glEnable(GL_STENCIL_TEST)
+    glDepthMask(GL_FALSE)  # Desabilitar escrita no depth buffer
+    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE)  # Desabilitar escrita no color buffer
+    
+    # Garantir que o depth test está habilitado e configurado corretamente
+    glEnable(GL_DEPTH_TEST)
+    glDepthFunc(GL_LEQUAL)
+    
+    # Primeira passagem - faces traseiras
     glCullFace(GL_FRONT)
-    glStencilOp(GL_KEEP, GL_KEEP, GL_DECR_WRAP)
+    glStencilFunc(GL_ALWAYS, 0, ~0)
+    glStencilOp(GL_KEEP, GL_INCR_WRAP, GL_KEEP)  # Incrementar no depth fail
+    
     for volume in volumes:
         volume.render()
-
-
-    glDepthMask(GL_FALSE)
-    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE)
+    
+    # Segunda passagem - faces frontais
+    glCullFace(GL_BACK)
+    glStencilOp(GL_KEEP, GL_DECR_WRAP, GL_KEEP)  # Decrementar no depth fail
+    
+    for volume in volumes:
+        volume.render()
+    
+    # Configurar para renderizar o quad das sombras
+    glDepthMask(GL_TRUE)  # Reabilitar escrita no depth buffer
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE)  # Reabilitar escrita no color buffer
+    glStencilFunc(GL_NOTEQUAL, 0, ~0)  # Renderizar onde stencil != 0
     glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP)
-
+    
+    # Configurar blending para as sombras
     glEnable(GL_BLEND)
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-    glEnable(GL_STENCIL_TEST)
-    glCullFace(GL_BACK)
-    glStencilFunc(GL_NOTEQUAL, 0, 0xffffff)
-    glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP)
-
+    
     # Render the final shadowed quad
     Render.set_shader(stencilShader)
     quadrender.render()
     
     # Restore previous state
 
-    glDepthMask(GL_TRUE)
-    glEnable(GL_DEPTH_TEST)
-    glClear(GL_STENCIL_BUFFER_BIT)
-    glStencilFunc(GL_ALWAYS, 0, 0xFF) 
     glDisable(GL_STENCIL_TEST)
-    glDisable(GL_BLEND)
+    glClear(GL_STENCIL_BUFFER_BIT)
+
+    glDisable(GL_DEPTH_TEST)
 
 
 
@@ -300,24 +284,25 @@ while core.run():
     
 
 
-    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL    )
 
-    Render.set_matrix(MODEL_MATRIX, glm.mat4(1.0))
+
+    Render.set_blend(True)
+    Render.set_depth_test(False)
+    Render.set_blend_mode(BlendMode.NONE)
+    Render.set_matrix(MODEL_MATRIX, glm.mat4(100.0))
     # if showGrid:
     #     lines.grid(10, 10, True)
 
     lines.sphere(lightPos.x,lightPos.y,lightPos.z,0.4)
 
-    #volumes[0].debug(lines)
-
-
+    # for volume in volumes:
+    #     volume.debug(lines,False,True,RED)
 
     lines.render() 
 
     #2d stuff
-    glDisable(GL_DEPTH_TEST)
-    glEnable(GL_BLEND)
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+    #Render.set_clear_mode(False)
+    Render.set_blend_mode(BlendMode.Normal)
 
 
 
@@ -359,6 +344,9 @@ while core.run():
 
 
 
+    Render.set_cull(True)
+    Render.set_cull_mode(CullMode.Back)
+    Render.set_depth_test(True)
 
 
 

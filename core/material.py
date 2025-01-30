@@ -350,6 +350,52 @@ class PointDepthShader(Shader):
 
 
 
+class VolumeColorShader(Shader):
+    def __init__(self):
+        super().__init__()
+        self.attributes=[Attribute.POSITION3D] 
+
+        vertex="""#version 330
+
+            layout (location = 0) in vec3 aPosition;
+
+            uniform mat4 uProjection;
+            uniform mat4 uView;
+            uniform mat4 uModel;
+   
+          
+     
+            void main() 
+            {
+
+              
+                         gl_Position =  uProjection * uView * uModel *  vec4(aPosition, 1.0);
+            }
+
+
+        """
+
+        fragment="""#version 330
+           
+
+       out vec4 FragColor;
+       uniform vec3 objectColor;
+
+        void main() 
+        {
+      
+             gl_FragColor =vec4(objectColor, 1.0);
+          
+
+        }
+
+        """
+
+   
+
+
+        self.create_shader(vertex,fragment)
+
 class PointGeoDepthShader(Shader):
     def __init__(self):
         super().__init__()

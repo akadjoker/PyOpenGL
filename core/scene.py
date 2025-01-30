@@ -342,6 +342,12 @@ class Entity:
 
   
     ### TRANSFORMAÇÃO DE PONTOS, VETORES E NORMAIS ###
+    def get_direction(self):
+        local_forward = glm.vec3(0.0, 0.0, -1.0)
+        world_forward = self.get_local_rotation() * local_forward
+        return glm.normalize(world_forward)
+
+
 
     def transform_point(self, x, y, z, src, dest):
         tformed = glm.vec3(x, y, z)
@@ -690,7 +696,21 @@ class Scene:
         self.nodes.append(model)  
         return model
 
-
+    def render_index(self,index,shader,material=True):
+        Render.set_matrix(VIEW_MATRIX, self.mainCamera.get_view_matrix())
+        Render.set_matrix(PROJECTION_MATRIX, self.mainCamera.get_projection_matrix())
+        if shader.contains(UNIFORM_CAMERA):
+            shader.set_vector3f("viewPos", self.mainCamera.get_local_position())
+        if shader.contains(UNIFORM_VIEW) or shader.contains(UNIFORM_PROJECTION):
+            shader.set_matrix4fv("uView", glm.value_ptr(Render.matrix[VIEW_MATRIX]))
+            shader.set_matrix4fv("uProjection", glm.value_ptr(Render.matrix[PROJECTION_MATRIX]))
+        node = self.nodes[index]
+        if node.visible:
+            box = node.get_bounding_box()
+            if not material:#in shadow still need to render
+                node.render(shader,False)
+            elif Render.is_box_in_frustum(box):
+                node.render(shader,True)
 
 
     def render(self,shader,material=True):

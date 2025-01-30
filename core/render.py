@@ -954,7 +954,6 @@ class DepthBuffer:
         self.isBegin = True
         Render.save()
         Render.set_viewport(0, 0, self.width, self.height)
-        Render.set_clear_color(0.0, 0.0, 0.0)
         glBindFramebuffer(GL_FRAMEBUFFER, self.frame_buffer)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
     
@@ -965,8 +964,8 @@ class DepthBuffer:
         self.isBegin = False
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
         Render.restore()
-        Render.shaders[0] = self.color
-        Render.shaders[1] = self.depth
+        #Render.shaders[0] = self.color
+        #Render.shaders[1] = self.depth
 
     def release(self):
         glDeleteFramebuffers(1, [self.frame_buffer])

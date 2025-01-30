@@ -115,7 +115,22 @@ class UtilMath:
             
         return False, 0.0   
 
-
+    @staticmethod
+    def project_to_infinity(vertex, light_position, infinity):
+        direction = glm.normalize(vertex - light_position)
+        return vertex + direction * infinity
+    
+    @staticmethod
+    def are_equal(v1, v2, epsilon=1e-5):
+        return glm.all(glm.epsilonEqual(v1, v2, epsilon))
+    
+    @staticmethod
+    def is_front_facing(v0, v1, v2, light_direction):
+        edge1 = v1 - v0
+        edge2 = v2 - v0
+        normal = glm.normalize(glm.cross(edge1, edge2))
+        dot_product = glm.dot(normal, glm.normalize(light_direction))
+        return dot_product > 0.0
 class Rectangle:
     def __init__(self, x, y, width, height):
         self.x = x
